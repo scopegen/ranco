@@ -1,4 +1,7 @@
-const API_BASE = 'http://localhost:8000'
+// Set VITE_API_BASE_URL in Amplify's build environment variables to point
+// at the real backend once it's live (e.g. on Lightsail). Falls back to the
+// local dev backend when the variable isn't set.
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const TOKEN_KEY = 'ranco_token'
 
 export function getToken(): string | null {
