@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ranco Dental CRM — System Overview</title>
+<style>
+  :root {
+    --paper: #fbfbf8;
+    --paper-raised: #f2f1ea;
+    --ink: #171a15;
+    --ink-soft: #4d5147;
+    --rule: #d9dccf;
+    --accent: #3a4270;
+    --accent-soft: #eceeF6;
+    --ok: #4b7a5b;
+    --ok-soft: #e7efe7;
+    --warn: #b5793a;
+    --warn-soft: #f7ecdc;
+    --crit: #a8433a;
+    --crit-soft: #f6e6e2;
+    --card-shadow: 0 1px 0 rgba(23,26,21,0.06), 0 1px 3px rgba(23,26,21,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #1b1d17;
+      --paper-raised: #24261f;
+      --ink: #ece9df;
+      --ink-soft: #b4b3a6;
+      --rule: #383a30;
+      --accent: #9ba3d6;
+      --accent-soft: #2b2e45;
+      --ok: #7cb28d;
+      --ok-soft: #24352a;
+      --warn: #d9a35c;
+      --warn-soft: #3a2f1c;
+      --crit: #d97d72;
+      --crit-soft: #3a2320;
+      --card-shadow: 0 1px 0 rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+  }
+
+  .sheet {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 52px;
+  }
+
+  .eyebrow {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-family: Charter, "Iowan Old Style", Georgia, serif;
+    font-size: 38px;
+    font-weight: 600;
+    margin: 0 0 14px;
+    text-wrap: balance;
+    border-bottom: 3px double var(--rule);
+    padding-bottom: 20px;
+  }
+
+  .sub {
+    font-size: 16px;
+    color: var(--ink-soft);
+    max-width: 66ch;
+    margin: 0;
+  }
+
+  h2 {
+    font-family: Charter, "Iowan Old Style", Georgia, serif;
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 14px;
+    letter-spacing: 0.03em;
+    margin: 22px 0 8px;
+    color: var(--ink);
+  }
+  h3:first-child { margin-top: 0; }
+
+  .section-head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+
+  .section-note {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    max-width: 70ch;
+    margin: 0;
+  }
+
+  .panel {
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    box-shadow: var(--card-shadow);
+    padding: 20px;
+    overflow-x: auto;
+  }
+
+  .panel + .panel { margin-top: 18px; }
+
+  .panel .mermaid {
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    min-width: 560px;
+  }
+
+  .prose { display: flex; flex-direction: column; gap: 16px; }
+  .prose p { margin: 0; font-size: 15.5px; }
+  .prose ol, .prose ul { margin: 0; padding-left: 22px; font-size: 15.5px; display: flex; flex-direction: column; gap: 10px; }
+  .prose li strong { color: var(--ink); }
+  .prose code, .field-name.inline {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 460px;
+    font-size: 13.5px;
+  }
+  caption { text-align: left; }
+  th, td {
+    text-align: left;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  th {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+  td.field { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; color: var(--ink); }
+  td.type { color: var(--ink-soft); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+
+  .pill {
+    display: inline-block;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    padding: 1px 7px;
+    border-radius: 20px;
+    line-height: 1.6;
+  }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.accent { background: var(--accent-soft); color: var(--accent); }
+
+  .entity-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+  }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 18px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <header>
+    <p class="eyebrow">System Overview · Companion to backend-wireframe.html</p>
+    <h1>Ranco Dental CRM — How It All Works</h1>
+    <p class="sub">A plain-English walkthrough of the data model: how a patient's visit turns into a consultation, a treatment, a prescription, and a bill — and how every one of those stays attached to that patient's history, permanently.</p>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>The idea in one paragraph</h2>
+    </div>
+    <div class="panel prose">
+      <p>Every patient's record starts the moment they walk in and get registered — nothing happens before that. From there, everything a patient goes through is a chain: a <strong>consultation</strong> (the exam), which leads to a <strong>treatment</strong> (the actual procedure, run by an assigned doctor), which is made up of individual <strong>visits</strong> (each sitting, each with its own charge). Prescriptions are written at the consultation or at any visit, and — unlike a typical medical note — they can be revised later, with every earlier version kept, not overwritten. Money moves twice: once per visit as it happens, and once more at the end when the treatment is marked finished, where an invoice sweeps up whatever's still unpaid. All of it — every consultation, treatment, visit, prescription edit, and payment — lives under that one patient's history, viewable as tabs, forever traceable back to who did what and when.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Entities, one by one</h2>
+      <p class="section-note">What each table is for, in plain terms.</p>
+    </div>
+    <div class="panel prose">
+      <ul>
+        <li><strong>STAFF</strong> — every person who logs into the system, Admin and Doctor alike, in one table. A <code>role</code> field tells the two apart; <code>specialty</code> applies to doctors (e.g. "Orthodontist").</li>
+        <li><strong>PATIENT</strong> — created the instant someone registers at the clinic. This is the moment their history begins — everything downstream (consultations, treatments, visits, billing) hangs off this one record's <code>id</code>.</li>
+        <li><strong>CONSULTATION</strong> — the first meeting: a doctor examines the patient and decides what's needed. Flat ₹500 fee. This <em>always</em> happens before a treatment exists — including the second, third, or any later time the same patient comes back for something new. The consulting doctor is also the one who decides the treatment and assigns who performs it.</li>
+        <li><strong>SERVICE</strong> — the clinic's price catalog (RCT, filling, cleaning, etc). Admin-managed only.</li>
+        <li><strong>TREATMENT</strong> — created once a consultation has decided what's needed. Carries a link back to the consultation it came from, and to whichever doctor currently owns it — which can change mid-way.</li>
+        <li><strong>TREATMENT_HANDOFF</strong> — a log entry created every time the doctor on a treatment changes. Records who it moved from, who it moved to, who made the change, when, and optionally why — so the history shows exactly when and why a handoff happened, instead of silently overwriting the doctor field.</li>
+        <li><strong>VISIT</strong> — one row per sitting under a treatment. Carries that sitting's charge and its own paid/unpaid status plus payment mode — settled as it happens, not held until the treatment ends.</li>
+        <li><strong>PRESCRIPTION_ENTRY</strong> — a doctor's note, tied to either a consultation or a visit, all feeding into one continuous timeline per patient. It's editable now — but only by the doctor who originally wrote it.</li>
+        <li><strong>PRESCRIPTION_VERSION</strong> — every time a prescription entry is edited, the prior version is saved here in full, along with who edited it and when. Nothing is ever silently lost.</li>
+        <li><strong>INVOICE</strong> — generated when a treatment is marked finished. It only totals the visits that were <em>still unpaid</em> at that point (already-paid visits don't appear again) and captures the payment mode used to settle them.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Entity reference</h2>
+      <p class="section-note">Every field, table by table.</p>
+    </div>
+    <div class="entity-grid">
+
+      <div class="panel">
+        <h3>STAFF</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">name</td><td class="type">string</td><td></td></tr>
+            <tr><td class="field">role</td><td class="type"><span class="pill accent">admin / doctor</span></td><td></td></tr>
+            <tr><td class="field">specialty</td><td class="type">string</td><td>doctors only</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>PATIENT</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">name</td><td class="type"><span class="pill warn">required</span></td><td></td></tr>
+            <tr><td class="field">phone</td><td class="type"><span class="pill warn">required</span></td><td></td></tr>
+            <tr><td class="field">address</td><td class="type"><span class="pill warn">required</span></td><td></td></tr>
+            <tr><td class="field">dob</td><td class="type"><span class="pill warn">required</span></td><td>age is computed from this, not stored separately</td></tr>
+            <tr><td class="field">email</td><td class="type">string</td><td>optional</td></tr>
+            <tr><td class="field">weight</td><td class="type">decimal</td><td>optional</td></tr>
+            <tr><td class="field">medical_history</td><td class="type">text</td><td>optional — disease history</td></tr>
+            <tr><td class="field">added_by</td><td class="type">fk → staff</td><td></td></tr>
+            <tr><td class="field">registered_at</td><td class="type">datetime</td><td>history starts here</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>CONSULTATION</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">patient_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">doctor_id</td><td class="type">fk → staff</td><td>consulting doctor</td></tr>
+            <tr><td class="field">consult_date</td><td class="type">date</td><td></td></tr>
+            <tr><td class="field">fee</td><td class="type">decimal</td><td>₹500 flat</td></tr>
+            <tr><td class="field">findings</td><td class="type">text</td><td></td></tr>
+            <tr><td class="field">payment_status</td><td class="type"><span class="pill warn">unpaid</span></td><td></td></tr>
+            <tr><td class="field">payment_mode</td><td class="type">cash / card / upi</td><td></td></tr>
+            <tr><td class="field">recommended_service_id</td><td class="type">fk → service</td><td>what the doctor decided is needed</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>SERVICE</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">name</td><td class="type">string</td><td></td></tr>
+            <tr><td class="field">listed_price</td><td class="type">decimal</td><td></td></tr>
+            <tr><td class="field">active</td><td class="type"><span class="pill ok">active</span></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>TREATMENT</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">patient_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">service_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">doctor_id</td><td class="type">fk → staff</td><td>current doctor</td></tr>
+            <tr><td class="field">consultation_id</td><td class="type">fk → consultation</td><td>where it came from</td></tr>
+            <tr><td class="field">status</td><td class="type"><span class="pill accent">ongoing</span></td><td></td></tr>
+            <tr><td class="field">started_at / completed_at</td><td class="type">date</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>TREATMENT_HANDOFF</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">treatment_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">from_doctor_id</td><td class="type">fk → staff</td><td></td></tr>
+            <tr><td class="field">to_doctor_id</td><td class="type">fk → staff</td><td></td></tr>
+            <tr><td class="field">changed_by</td><td class="type">fk → staff</td><td></td></tr>
+            <tr><td class="field">changed_at</td><td class="type">datetime</td><td></td></tr>
+            <tr><td class="field">reason</td><td class="type">text</td><td>optional</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>VISIT</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">treatment_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">visit_date</td><td class="type">date</td><td></td></tr>
+            <tr><td class="field">listed_price</td><td class="type">decimal</td><td></td></tr>
+            <tr><td class="field">discounted_price</td><td class="type">decimal</td><td></td></tr>
+            <tr><td class="field">payment_status</td><td class="type"><span class="pill warn">unpaid</span></td><td>editable any time</td></tr>
+            <tr><td class="field">payment_mode</td><td class="type">cash / card / upi</td><td>set once paid</td></tr>
+            <tr><td class="field">paid_at</td><td class="type">datetime</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>PRESCRIPTION_ENTRY</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">patient_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">consultation_id</td><td class="type">fk, nullable</td><td>one of these two is set</td></tr>
+            <tr><td class="field">visit_id</td><td class="type">fk, nullable</td><td>one of these two is set</td></tr>
+            <tr><td class="field">notes</td><td class="type">text</td><td>current version</td></tr>
+            <tr><td class="field">added_by</td><td class="type">fk → staff</td><td>only one who can edit it</td></tr>
+            <tr><td class="field">created_at / last_edited_at</td><td class="type">datetime</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>PRESCRIPTION_VERSION</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">prescription_entry_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">notes</td><td class="type">text</td><td>snapshot as it read then</td></tr>
+            <tr><td class="field">edited_by</td><td class="type">fk → staff</td><td></td></tr>
+            <tr><td class="field">edited_at</td><td class="type">datetime</td><td></td></tr>
+            <tr><td class="field">version_number</td><td class="type">int</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>INVOICE</h3>
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="field">id</td><td class="type">int</td><td>primary key</td></tr>
+            <tr><td class="field">treatment_id</td><td class="type">fk</td><td></td></tr>
+            <tr><td class="field">listed_total</td><td class="type">decimal</td><td>unpaid visits only</td></tr>
+            <tr><td class="field">discount_total</td><td class="type">decimal</td><td></td></tr>
+            <tr><td class="field">final_total</td><td class="type">decimal</td><td></td></tr>
+            <tr><td class="field">payment_mode</td><td class="type">cash / card / upi</td><td>asked at generation</td></tr>
+            <tr><td class="field">issued_at / issued_by</td><td class="type">datetime / fk</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Entity relationship diagram</h2>
+      <p class="section-note">How every table above connects to the others.</p>
+    </div>
+    <div class="panel">
+      <div class="mermaid">
+erDiagram
+    STAFF ||--o{ CONSULTATION : "consults as"
+    STAFF ||--o{ TREATMENT : "assigned as doctor"
+    STAFF ||--o{ PATIENT : "added by"
+    PATIENT ||--o{ CONSULTATION : "has"
+    PATIENT ||--o{ TREATMENT : "has"
+    SERVICE ||--o{ TREATMENT : "priced from"
+    CONSULTATION |o--o| TREATMENT : "leads to"
+    TREATMENT ||--o{ VISIT : "contains"
+    TREATMENT ||--o{ TREATMENT_HANDOFF : "doctor reassigned"
+    TREATMENT ||--o| INVOICE : "billed at completion"
+    PATIENT ||--o{ PRESCRIPTION_ENTRY : "running history"
+    CONSULTATION ||--o| PRESCRIPTION_ENTRY : "may log one"
+    VISIT ||--o| PRESCRIPTION_ENTRY : "may log one"
+    PRESCRIPTION_ENTRY ||--o{ PRESCRIPTION_VERSION : "edit history"
+
+    STAFF {
+        int id
+        string name
+        string role
+        string specialty
+    }
+    PATIENT {
+        int id
+        string name
+        string phone
+        string address
+        date dob
+        string email
+        decimal weight
+        text medical_history
+        int added_by
+        datetime registered_at
+    }
+    CONSULTATION {
+        int id
+        int patient_id
+        int doctor_id
+        date consult_date
+        decimal fee
+        text findings
+        string payment_status
+        string payment_mode
+        int recommended_service_id
+    }
+    SERVICE {
+        int id
+        string name
+        decimal listed_price
+        bool active
+    }
+    TREATMENT {
+        int id
+        int patient_id
+        int service_id
+        int doctor_id
+        int consultation_id
+        string status
+        date started_at
+        date completed_at
+    }
+    TREATMENT_HANDOFF {
+        int id
+        int treatment_id
+        int from_doctor_id
+        int to_doctor_id
+        int changed_by
+        datetime changed_at
+        text reason
+    }
+    VISIT {
+        int id
+        int treatment_id
+        date visit_date
+        decimal listed_price
+        decimal discounted_price
+        string payment_status
+        string payment_mode
+        datetime paid_at
+    }
+    PRESCRIPTION_ENTRY {
+        int id
+        int patient_id
+        int consultation_id
+        int visit_id
+        text notes
+        int added_by
+        datetime created_at
+        datetime last_edited_at
+    }
+    PRESCRIPTION_VERSION {
+        int id
+        int prescription_entry_id
+        text notes
+        int edited_by
+        datetime edited_at
+        int version_number
+    }
+    INVOICE {
+        int id
+        int treatment_id
+        decimal listed_total
+        decimal discount_total
+        decimal final_total
+        string payment_mode
+        datetime issued_at
+        int issued_by
+    }
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Billing &amp; settlement flow</h2>
+      <p class="section-note">Money moves at two points, not one.</p>
+    </div>
+    <div class="panel">
+      <div class="mermaid">
+graph LR
+    C["Consultation<br/>flat ₹500 fee"] -->|paid on the spot,<br/>mode captured| CP["marked paid"]
+    V["Each visit<br/>as it happens"] -->|paid any time,<br/>mode captured| VP["marked paid"]
+    V -->|left unpaid| U["stays unpaid"]
+    T["Treatment marked finished"] --> GEN["Generate Invoice"]
+    U --> GEN
+    GEN -->|asks payment mode| PAY["payment mode entered"]
+    PAY --> INV["Invoice created —<br/>totals only the visits<br/>that were still unpaid"]
+    INV --> SETTLE["those visits flip to paid"]
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>A patient's journey, step by step</h2>
+    </div>
+    <div class="panel prose">
+      <ol>
+        <li><strong>Patient arrives and registers.</strong> A <code>PATIENT</code> row is created — this is when their history begins.</li>
+        <li><strong>Consultation happens.</strong> The doctor examines them, charges the flat ₹500 fee (tracked as paid/unpaid + payment mode), and decides what treatment is needed and who should perform it. A prescription can be written right here if needed (e.g. a painkiller).</li>
+        <li><strong>Treatment is created.</strong> Linked back to that consultation, assigned to a doctor, status "ongoing".</li>
+        <li><strong>Visits happen.</strong> Each sitting has its own charge, its own prescription entry, and gets paid whenever the patient actually pays.</li>
+        <li><strong>If needed, the doctor changes mid-treatment</strong> — logged as a handoff (from whom, to whom, by whom, when, why).</li>
+        <li><strong>Treatment is marked finished.</strong> "Generate Invoice" totals up whatever visits are still unpaid, asks for the payment mode, creates the invoice, and settles those visits.</li>
+        <li><strong>If the patient wants another treatment</strong>, the cycle restarts from step 2 — a fresh consultation, possibly a different doctor — but it all keeps adding to the <em>same</em> patient's history. No new patient record is ever created for a returning patient.</li>
+      </ol>
+      <p>The whole system rests on one rule: everything must be traceable back to <code>patient_id</code> — consultation, treatment, visit, prescription, or bill. That's why the patient page is built as tabs (Timeline / Consultations / Treatments / Billing) over one single record, rather than scattered screens.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Known gaps — not yet in the model</h2>
+      <p class="section-note">Checked against what typical dental practice management software covers; these are worth a decision before build.</p>
+    </div>
+    <div class="panel prose">
+      <ul>
+        <li><strong>GST fields on INVOICE.</strong> CGST/SGST split, GSTIN, HSN/SAC codes — Indian clinics generally need this, with therapeutic procedures often GST-exempt and cosmetic ones taxed.</li>
+        <li><strong>Consent forms for procedures.</strong> RCT/extraction-type procedures typically need a recorded, signed consent, distinct from the clinical prescription notes.</li>
+        <li><strong>Allergies &amp; current medications as their own fields.</strong> Right now they'd sit inside the free-text <code>medical_history</code> field — worth splitting out so they can be checked before prescribing.</li>
+        <li><strong>Recall / overdue-checkup list.</strong> An automation on top of appointments (once that exists) rather than a new entity — flags patients due for a follow-up.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Deferred to a later phase</h2>
+      <p class="section-note">Confirmed as needed eventually — not blocking the current build, since Admin/Doctor panels come first and the patient-facing side comes after.</p>
+    </div>
+    <div class="panel prose">
+      <ul>
+        <li><strong>Patient-facing login &amp; appointment booking.</strong> No patient login in this phase. When the patient system gets integrated later, it brings appointment booking with it — a calendar, future slots, and (per Indian-clinic norms) WhatsApp/SMS reminders.</li>
+        <li><strong>Doctor availability / scheduling.</strong> Seeing what each doctor is assigned to at what time, and when they're next free — rides on the same appointment system above, so it waits until that's built.</li>
+        <li><strong>Capacitor-wrapped mobile app.</strong> Already accounted for in the system shape (same React/Vite build, wrapped by Capacitor) — just flagging it's a real deliverable for later, not dropped.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>concept only — no code written yet · companion to backend-wireframe.html</footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default'
+  });
+</script>
+</body>
+</html>

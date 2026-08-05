@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+/* ---- Satoshi, self-hosted (public/fonts) ---- */
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/Satoshi-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/Satoshi-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/Satoshi-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Metric-approximated stand-in shown during font load, so text doesn't jump
+   size when Satoshi swaps in. Tune with a tool like Fontaine if the reflow
+   is ever visible in practice. */
+@font-face {
+  font-family: "Satoshi Fallback";
+  src: local("Arial");
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+  size-adjust: 100.5%;
+}
+
+/* ---- design tokens ---- */
+@theme {
+  --font-satoshi: "Satoshi", "Satoshi Fallback", sans-serif;
+
+  /* locked type scale: 14px body everywhere, 18px sub-headings, 24px headings */
+  --text-body: 14px;
+  --text-body--line-height: 1.6;
+  --text-subheading: 18px;
+  --text-subheading--line-height: 1.4;
+  --text-heading: 24px;
+  --text-heading--line-height: 1.2;
+
+  /* Deep Ocean palette */
+  --color-paper: #fbfcfe;
+  --color-paper-raised: #f3f6fa;
+  --color-ink: #101826;
+  --color-ink-soft: #57667a;
+  --color-ink-faint: #8894a3;
+  --color-rule: #e1e7ef;
+  --color-accent: #1e5f8c;
+  --color-accent-deep: #123f5c;
+  --color-accent-hover: #1a5478;
+  --color-accent-tint: #e6eef4;
+  --color-crit: #a8433a;
+  --color-crit-soft: #f6e6e2;
+}
+
+/* ---- base ---- */
+@layer base {
+  html,
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  body {
+    font-family: var(--font-satoshi);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1 {
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+
+  h2 {
+    font-size: 18px;
+    line-height: 1.4;
+    font-weight: 500;
+    text-wrap: balance;
+  }
+
+  p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+}

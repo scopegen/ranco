@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.pyc
+.env
+pgdata/
+pgdata.log
+test-*.pdf
+preview-*.pdf
