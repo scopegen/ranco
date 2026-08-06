@@ -8,3 +8,5 @@ pyjwt
 bcrypt
 email-validator
 xhtml2pdf
+mangum
+sqlalchemy-aurora-data-api
