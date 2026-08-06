@@ -6,3 +6,5 @@ pgdata/
 pgdata.log
 test-*.pdf
 preview-*.pdf
+lambda_build/
+lambda_deploy.zip

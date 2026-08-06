@@ -1,0 +1,17 @@
+# Trimmed for the Lambda deployment package — excludes things only needed
+# for local dev / migrations, which never run inside the deployed function:
+#   - uvicorn: Mangum replaces the ASGI server entirely, Lambda doesn't run one
+#   - alembic: migrations are run from a dev machine against Aurora, not from
+#     inside the Lambda itself
+#   - psycopg[binary]: only used for the local Postgres connection; production
+#     goes through the Aurora Data API dialect instead, no DB driver needed
+# boto3 isn't listed either — it ships built into the Lambda Python runtime.
+fastapi
+mangum
+sqlalchemy
+pydantic-settings
+pyjwt
+bcrypt
+email-validator
+xhtml2pdf
+sqlalchemy-aurora-data-api
