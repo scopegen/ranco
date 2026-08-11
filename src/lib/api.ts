@@ -58,19 +58,34 @@ export const api = {
 }
 
 /**
- * Fetches a file (PDF) and triggers a normal browser download.
- * NOTE: this is the web-only download path — a fake `<a download>` click.
- * Doesn't work the same way inside a Capacitor WebView; that'll need
- * @capacitor/filesystem + @capacitor/share instead, swapped in behind a
- * platform check, whenever this gets wrapped as a native app.
+ * Fetches a file (PDF) and opens it in a new browser tab (the browser's
+ * native PDF viewer takes over) rather than forcing an immediate download —
+ * no `download` attribute, so it displays instead of saving to disk.
+ * NOTE: this is the web-only path. Doesn't work the same way inside a
+ * Capacitor WebView; that'll need @capacitor/filesystem + @capacitor/share
+ * instead, swapped in behind a platform check, whenever this gets wrapped
+ * as a native app.
  */
 export async function downloadPdf(path: string): Promise<void> {
+  // Open the tab synchronously, before the async fetch below — calling
+  // window.open() after an await loses its "direct result of a user
+  // gesture" standing and most browsers silently block it as a popup.
+  const newTab = window.open('', '_blank')
+
   const token = getToken()
   const headers: Record<string, string> = {}
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(`${API_BASE}${path}`, { headers })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, { headers })
+  } catch (err) {
+    newTab?.close()
+    throw err
+  }
+
   if (!res.ok) {
+    newTab?.close()
     let detail = res.statusText
     try {
       const body = await res.json()
@@ -81,17 +96,15 @@ export async function downloadPdf(path: string): Promise<void> {
     throw new ApiError(res.status, detail)
   }
 
-  const disposition = res.headers.get('Content-Disposition') ?? ''
-  const match = disposition.match(/filename="?([^"]+)"?/)
-  const filename = match ? match[1] : 'document.pdf'
-
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  if (newTab) {
+    // Blob URL is intentionally not revoked here — the new tab needs it to
+    // actually render the PDF; the browser reclaims it when that tab closes.
+    newTab.location.href = url
+  } else {
+    // Popup was blocked despite opening synchronously (rare) — fall back to
+    // opening after the fact rather than losing the PDF entirely.
+    window.open(url, '_blank')
+  }
 }

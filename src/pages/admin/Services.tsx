@@ -1,17 +1,38 @@
-import { useState, type SubmitEvent } from 'react'
+import { useMemo, useState, type SubmitEvent } from 'react'
 import { useAuth } from '../../state/AuthContext'
 import { useClinic } from '../../state/ClinicContext'
 import { formatINR } from '../../lib/currency'
 import { Button } from '../../components/Button'
-import { Field } from '../../components/Field'
+import { Field, SelectField } from '../../components/Field'
 import { Pill } from '../../components/Pill'
 import type { Service } from '../../types/clinical'
+
+const UNCATEGORIZED = 'General'
 
 export function Services() {
   const { staff } = useAuth()
   const { services, loading, addService, updateService } = useClinic()
   const isAdmin = staff?.role === 'admin'
   const [formOpen, setFormOpen] = useState(false)
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, Service[]>()
+    for (const service of services) {
+      const key = service.category ?? UNCATEGORIZED
+      groups.set(key, [...(groups.get(key) ?? []), service])
+    }
+    // Uncategorized services last, everything else alphabetical.
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === UNCATEGORIZED) return 1
+      if (b === UNCATEGORIZED) return -1
+      return a.localeCompare(b)
+    })
+  }, [services])
+
+  const existingCategories = useMemo(
+    () => [...new Set(services.map((s) => s.category).filter((c): c is string => Boolean(c)))].sort(),
+    [services],
+  )
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-10">
@@ -35,6 +56,7 @@ export function Services() {
 
       {formOpen && isAdmin && (
         <ServiceForm
+          existingCategories={existingCategories}
           onSubmit={async (input) => {
             await addService(input)
             setFormOpen(false)
@@ -43,9 +65,14 @@ export function Services() {
         />
       )}
 
-      <div className="flex flex-col gap-2">
-        {services.map((service) => (
-          <ServiceRow key={service.id} service={service} editable={isAdmin} onSave={updateService} />
+      <div className="flex flex-col gap-6">
+        {grouped.map(([category, groupServices]) => (
+          <div key={category} className="flex flex-col gap-2">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">{category}</p>
+            {groupServices.map((service) => (
+              <ServiceRow key={service.id} service={service} editable={isAdmin} existingCategories={existingCategories} onSave={updateService} />
+            ))}
+          </div>
         ))}
       </div>
     </div>
@@ -55,11 +82,13 @@ export function Services() {
 function ServiceRow({
   service,
   editable,
+  existingCategories,
   onSave,
 }: {
   service: Service
   editable: boolean
-  onSave: (id: string, input: { name: string; listedPrice: number; active: boolean }) => Promise<Service>
+  existingCategories: string[]
+  onSave: (id: string, input: { name: string; category?: string | null; listedPrice: number; active: boolean }) => Promise<Service>
 }) {
   const [editing, setEditing] = useState(false)
 
@@ -67,6 +96,7 @@ function ServiceRow({
     return (
       <ServiceForm
         initial={service}
+        existingCategories={existingCategories}
         onSubmit={async (input) => {
           await onSave(service.id, input)
           setEditing(false)
@@ -94,25 +124,36 @@ function ServiceRow({
   )
 }
 
+const NO_CATEGORY = 'No category (General)'
+const NEW_CATEGORY = '+ Add new category…'
+
 function ServiceForm({
   initial,
+  existingCategories,
   onSubmit,
   onCancel,
 }: {
   initial?: Service
-  onSubmit: (input: { name: string; listedPrice: number; active: boolean }) => Promise<void>
+  existingCategories: string[]
+  onSubmit: (input: { name: string; category?: string | null; listedPrice: number; active: boolean }) => Promise<void>
   onCancel: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
+  const [categoryChoice, setCategoryChoice] = useState(initial?.category ?? NO_CATEGORY)
+  const [newCategoryName, setNewCategoryName] = useState('')
   const [price, setPrice] = useState(initial ? String(initial.listedPrice) : '')
   const [active, setActive] = useState(initial?.active ?? true)
   const [submitting, setSubmitting] = useState(false)
+
+  const categoryOptions = [NO_CATEGORY, ...existingCategories, NEW_CATEGORY]
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
     setSubmitting(true)
     try {
-      await onSubmit({ name, listedPrice: Number(price), active })
+      const category =
+        categoryChoice === NO_CATEGORY ? null : categoryChoice === NEW_CATEGORY ? newCategoryName.trim() || null : categoryChoice
+      await onSubmit({ name, category, listedPrice: Number(price), active })
     } finally {
       setSubmitting(false)
     }
@@ -121,9 +162,25 @@ function ServiceForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Root Canal Treatment" />
-        <Field label="Price" required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="8000" />
+        <Field label="Name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Molar RCT" />
+        <SelectField
+          label="Category"
+          hint="add this as a sub-service under an existing category, or start a new one"
+          options={categoryOptions}
+          value={categoryChoice}
+          onChange={(e) => setCategoryChoice(e.target.value)}
+        />
       </div>
+      {categoryChoice === NEW_CATEGORY && (
+        <Field
+          label="New category name"
+          required
+          value={newCategoryName}
+          onChange={(e) => setNewCategoryName(e.target.value)}
+          placeholder="e.g. Dental Bridges"
+        />
+      )}
+      <Field label="Price" required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="8000" />
       <label className="flex items-center gap-2 text-body text-ink">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 accent-accent" />
         Active — shown when starting a treatment

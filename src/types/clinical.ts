@@ -17,6 +17,7 @@ export interface Staff {
 export interface Service {
   id: string
   name: string
+  category: string | null
   listedPrice: number
   active: boolean
 }
@@ -69,6 +70,8 @@ export interface Invoice {
   id: string
   treatmentId: string
   listedTotal: number
+  discountType: 'percent' | 'amount' | null
+  discountValue: number | null
   discountTotal: number
   finalTotal: number
   paymentMode: PaymentMode

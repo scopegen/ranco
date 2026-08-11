@@ -68,12 +68,16 @@ table.rows td {{ font-size: 9.5pt; border-bottom: 1px solid {RULE}; padding: 5px
 """
 
 
-def _age(dob: date) -> int:
-    today = date.today()
-    years = today.year - dob.year
-    if (today.month, today.day) < (dob.month, dob.day):
-        years -= 1
-    return years
+def _age(dob: date | None, birth_year: int | None) -> int:
+    """Exact age when the full DOB is known; a year-precision estimate
+    (no month/day to compare against) when only the birth year is known."""
+    if dob is not None:
+        today = date.today()
+        years = today.year - dob.year
+        if (today.month, today.day) < (dob.month, dob.day):
+            years -= 1
+        return years
+    return date.today().year - birth_year
 
 
 def patient_id_str(patient_number: int) -> str:
@@ -109,7 +113,7 @@ def _patient_info_html(patient) -> str:
         <td width="50%"><span class="label">Patient ID:</span> {patient_id_str(patient.patient_number)}</td>
       </tr>
       <tr>
-        <td><span class="label">Age / Sex:</span> {_age(patient.dob)} yrs</td>
+        <td><span class="label">Age / Sex:</span> {_age(patient.dob, patient.birth_year)} yrs</td>
         <td><span class="label">Phone:</span> {_esc(patient.phone)}</td>
       </tr>
       <tr>
@@ -302,6 +306,63 @@ def render_history_pdf(
       {billing_section}
       {prescriptions_section}
       <div class="footer">Generated {datetime.now().strftime('%d %b %Y, %H:%M')} &mdash; {CLINIC_NAME} patient record. For clinical/administrative use.</div>
+    </body></html>
+    """
+    return _to_pdf(html)
+
+
+def render_invoice_pdf(patient, treatment, service_name: str, doctor_name: str, visits: list, invoice) -> bytes:
+    visit_rows = "".join(
+        f"""<tr>
+          <td>{v.visit_date.strftime('%d %b %Y')}</td>
+          <td>&#8377;{float(v.discounted_price if v.discounted_price is not None else v.listed_price):,.0f}</td>
+        </tr>"""
+        for v in sorted(visits, key=lambda v: v.visit_date)
+        if v.payment_status.value == "paid" and v.paid_at is not None
+    )
+
+    if invoice.discount_type == "percent":
+        discount_label = f"Discount ({invoice.discount_value:g}%)"
+    elif invoice.discount_type == "amount":
+        discount_label = "Discount (flat)"
+    else:
+        discount_label = "Discount"
+
+    discount_row = (
+        f'<tr><td class="label">{discount_label}</td><td class="amt">&#8722;&#8377;{float(invoice.discount_total):,.0f}</td></tr>'
+        if invoice.discount_total
+        else ""
+    )
+
+    html = f"""
+    <html><head><style>{BASE_CSS}</style></head>
+    <body>
+      {_clinic_header_html("Invoice")}
+      {_patient_info_html(patient)}
+      <table class="info">
+        <tr>
+          <td width="50%"><span class="label">Treatment:</span> {_esc(service_name)}</td>
+          <td width="50%"><span class="label">Doctor:</span> Dr. {_esc(_display_doctor_name(doctor_name))}</td>
+        </tr>
+        <tr>
+          <td><span class="label">Invoice date:</span> {invoice.issued_at.strftime('%d %b %Y, %H:%M')}</td>
+          <td><span class="label">Payment mode:</span> {invoice.payment_mode.value.upper()}</td>
+        </tr>
+      </table>
+
+      <p class="section-title">Visits billed</p>
+      <table class="rows">
+        <tr><th>Visit date</th><th>Amount</th></tr>
+        {visit_rows or '<tr><td colspan="2">No visits settled by this invoice.</td></tr>'}
+      </table>
+
+      <table class="summary" style="margin-top:8px;">
+        <tr><td class="label">Total amount</td><td class="amt">&#8377;{float(invoice.listed_total):,.0f}</td></tr>
+        {discount_row}
+        <tr><td class="label" style="font-size:11pt;">Amount payable</td><td class="amt" style="font-size:11pt;">&#8377;{float(invoice.final_total):,.0f}</td></tr>
+      </table>
+
+      <div class="footer">This is a system-generated invoice from {CLINIC_NAME}. For billing queries, please contact the clinic directly.</div>
     </body></html>
     """
     return _to_pdf(html)

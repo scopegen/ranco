@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Identity, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Identity, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -77,7 +77,11 @@ class Patient(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
     address: Mapped[str] = mapped_column(Text, nullable=False)
-    dob: Mapped[date] = mapped_column(Date, nullable=False)
+    # Exactly one of these two is set, enforced in the Pydantic schema:
+    # dob when the full date of birth is known, birth_year when only the
+    # year (or an age, converted to a year on the frontend) is known.
+    dob: Mapped[date | None] = mapped_column(Date)
+    birth_year: Mapped[int | None] = mapped_column(Integer)
     email: Mapped[str | None] = mapped_column(String(255))
     weight: Mapped[float | None] = mapped_column(Numeric(5, 2))
     # Checkbox flags (e.g. "Diabetes", "Pregnancy") — free-text detail still
@@ -93,6 +97,10 @@ class Service(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Optional grouping label (e.g. "Root Canal Treatment" for the "Molar
+    # RCT" / "Re-RCT" / etc. variants) — purely for display grouping, no
+    # relational meaning, so a plain nullable string is enough.
+    category: Mapped[str | None] = mapped_column(String(80))
     listed_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -192,6 +200,12 @@ class Invoice(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     treatment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("treatments.id"), nullable=False)
     listed_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # discount_type/discount_value are what the staff member actually entered
+    # ("10" + percent, or "500" + amount) — kept alongside discount_total (the
+    # resulting ₹ figure) so the invoice can display *how* the discount was
+    # given, not just the final number.
+    discount_type: Mapped[str | None] = mapped_column(String(10))
+    discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
     discount_total: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     final_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     payment_mode: Mapped[PaymentMode] = mapped_column(Enum(PaymentMode, name="payment_mode"), nullable=False)

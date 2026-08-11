@@ -8,7 +8,10 @@ export interface Patient {
   name: string
   phone: string
   address: string
-  dob: string
+  // Exactly one of these is set, depending on how the patient's birth info
+  // was entered (full date of birth / age / birth year only).
+  dob: string | null
+  birthYear: number | null
   email: string
   weight: string
   medicalConditions: string[]
@@ -16,15 +19,32 @@ export interface Patient {
   registeredAt: string
 }
 
+type PatientDraft = Omit<Patient, 'id' | 'patientNumber' | 'registeredAt'>
+
 interface PatientsContextValue {
   patients: Patient[]
   loading: boolean
   error: string | null
-  addPatient: (patient: Omit<Patient, 'id' | 'patientNumber' | 'registeredAt'>) => Promise<Patient>
+  addPatient: (patient: PatientDraft) => Promise<Patient>
+  editPatient: (id: string, patient: PatientDraft) => Promise<Patient>
   refresh: () => Promise<void>
 }
 
 const PatientsContext = createContext<PatientsContextValue | null>(null)
+
+function toApiPayload(patient: PatientDraft) {
+  return {
+    name: patient.name,
+    phone: patient.phone,
+    address: patient.address,
+    dob: patient.dob ?? undefined,
+    birth_year: patient.birthYear ?? undefined,
+    email: patient.email || undefined,
+    weight: patient.weight ? Number(patient.weight) : undefined,
+    medical_conditions: patient.medicalConditions,
+    medical_history: patient.medicalHistory || undefined,
+  }
+}
 
 export function PatientsProvider({ children }: { children: ReactNode }) {
   const { staff } = useAuth()
@@ -48,23 +68,20 @@ export function PatientsProvider({ children }: { children: ReactNode }) {
     if (staff) refresh()
   }, [staff, refresh])
 
-  async function addPatient(patient: Omit<Patient, 'id' | 'patientNumber' | 'registeredAt'>) {
-    const created = await clinicalApi.createPatient({
-      name: patient.name,
-      phone: patient.phone,
-      address: patient.address,
-      dob: patient.dob,
-      email: patient.email || undefined,
-      weight: patient.weight ? Number(patient.weight) : undefined,
-      medical_conditions: patient.medicalConditions,
-      medical_history: patient.medicalHistory || undefined,
-    })
+  async function addPatient(patient: PatientDraft) {
+    const created = await clinicalApi.createPatient(toApiPayload(patient))
     setPatients((prev) => [created, ...prev])
     return created
   }
 
+  async function editPatient(id: string, patient: PatientDraft) {
+    const updated = await clinicalApi.updatePatient(id, toApiPayload(patient))
+    setPatients((prev) => prev.map((p) => (p.id === id ? updated : p)))
+    return updated
+  }
+
   return (
-    <PatientsContext.Provider value={{ patients, loading, error, addPatient, refresh }}>
+    <PatientsContext.Provider value={{ patients, loading, error, addPatient, editPatient, refresh }}>
       {children}
     </PatientsContext.Provider>
   )

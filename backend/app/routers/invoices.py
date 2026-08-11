@@ -37,11 +37,23 @@ def generate_invoice(
     mode = payload.payment_mode or PaymentMode.cash
     now = datetime.now(timezone.utc)
 
+    discount_total = 0.0
+    if payload.discount_type and payload.discount_value:
+        if payload.discount_type == "percent":
+            discount_total = total * (payload.discount_value / 100)
+        else:
+            discount_total = payload.discount_value
+        # Clamp — a flat-amount discount larger than the bill itself
+        # shouldn't be able to push the final total negative.
+        discount_total = min(discount_total, total)
+
     invoice = Invoice(
         treatment_id=treatment_id,
         listed_total=total,
-        discount_total=0,
-        final_total=total,
+        discount_type=payload.discount_type,
+        discount_value=payload.discount_value,
+        discount_total=discount_total,
+        final_total=total - discount_total,
         payment_mode=mode,
         issued_by=current.id,
     )

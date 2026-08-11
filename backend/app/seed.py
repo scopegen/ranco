@@ -14,14 +14,35 @@ DOCTORS = [
     ("Dr. Rao", "Orthodontist"),
 ]
 
+# (name, category, price) — category is just a display grouping, no
+# relational meaning. Prices are estimates (mid-range private clinic,
+# 2026) — adjust to the clinic's actual rates whenever known; easiest done
+# from the Services page itself once live, no need to touch this file.
 SERVICES = [
-    ("Root Canal Treatment", 8000),
-    ("Cleaning", 800),
-    ("Filling", 1500),
-    ("Extraction", 1200),
-    ("Crown", 6000),
-    ("Scaling", 1000),
+    ("Cleaning", None, 800),
+    ("Filling", None, 1500),
+    ("Extraction", None, 1200),
+    ("Crown", None, 6000),
+    ("Scaling", None, 1000),
+    # Root Canal Treatment — split from the old single flat entry into
+    # tooth-type/technique variants.
+    ("Front Tooth RCT", "Root Canal Treatment", 4500),
+    ("Premolar RCT", "Root Canal Treatment", 5500),
+    ("Molar RCT", "Root Canal Treatment", 7500),
+    ("Single-Visit RCT", "Root Canal Treatment", 8000),
+    ("Re-RCT", "Root Canal Treatment", 9000),
+    # Dental Bridges — priced as a standard 3-unit bridge (two abutment
+    # crowns + one pontic), the usual way clinics quote a bridge as a whole.
+    ("PFM Bridge", "Dental Bridges", 9000),
+    ("Ceramic Bridge", "Dental Bridges", 15000),
+    ("Zirconia Bridge", "Dental Bridges", 18000),
+    ("Maryland Bridge", "Dental Bridges", 6000),
 ]
+
+# Superseded by the categorized variants above — deactivated (not deleted,
+# since existing treatments may still reference it by foreign key) so it
+# stops showing up as an option for new treatments.
+LEGACY_SERVICES_TO_RETIRE = ["Root Canal Treatment"]
 
 
 def seed() -> None:
@@ -52,9 +73,16 @@ def seed() -> None:
                 )
                 print(f"Created {email} / doctor123")
 
-        for name, price in SERVICES:
+        for name, category, price in SERVICES:
             if db.query(Service).filter(Service.name == name).first() is None:
-                db.add(Service(name=name, listed_price=price, active=True))
+                db.add(Service(name=name, category=category, listed_price=price, active=True))
+                print(f"Added service: {name} ({category or 'uncategorized'}) - Rs.{price}")
+
+        for name in LEGACY_SERVICES_TO_RETIRE:
+            legacy = db.query(Service).filter(Service.name == name).first()
+            if legacy and legacy.active:
+                legacy.active = False
+                print(f"Deactivated superseded service: {name}")
 
         db.commit()
         print("Seed complete.")

@@ -1,17 +1,17 @@
-# Trimmed for the Lambda deployment package — excludes things only needed
+# Trimmed for the Lambda deployment package - excludes things only needed
 # for local dev / migrations, which never run inside the deployed function:
 #   - uvicorn: Mangum replaces the ASGI server entirely, Lambda doesn't run one
-#   - alembic: migrations are run from a dev machine against Aurora, not from
-#     inside the Lambda itself
-#   - psycopg[binary]: only used for the local Postgres connection; production
-#     goes through the Aurora Data API dialect instead, no DB driver needed
-# boto3 isn't listed either — it ships built into the Lambda Python runtime.
+#   - alembic: migrations are run from a dev machine against the database,
+#     not from inside the Lambda itself
+# psycopg[binary] IS needed here (unlike the Aurora Data API plan this was
+# originally trimmed for) - we're on Neon now, a normal Postgres connection,
+# so the app needs a real driver to talk to it.
 fastapi
 mangum
 sqlalchemy
+psycopg[binary]
 pydantic-settings
 pyjwt
 bcrypt
 email-validator
 xhtml2pdf
-sqlalchemy-aurora-data-api

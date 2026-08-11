@@ -37,6 +37,7 @@ function App() {
           <Route index element={<Navigate to="patients" replace />} />
           <Route path="patients" element={<PatientList />} />
           <Route path="patients/new" element={<NewPatient />} />
+          <Route path="patients/:id/edit" element={<NewPatient />} />
           <Route path="patients/:id" element={<PatientDetail />} />
           <Route path="treatments" element={<TreatmentsOverview />} />
           <Route path="billing" element={<BillingOverview />} />

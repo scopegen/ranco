@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { Link, useLocation, useParams } from 'react-router-dom'
+import { ArrowLeft, FileText } from 'lucide-react'
 import { usePatients } from '../../state/PatientsContext'
 import { useClinic } from '../../state/ClinicContext'
 import { clinicalApi } from '../../lib/clinicalApi'
@@ -33,10 +33,12 @@ export interface PatientClinicalData {
 
 export function PatientDetail() {
   const { id } = useParams()
+  const location = useLocation()
   const { patients } = usePatients()
   const { downloadPrescriptionsPdf, downloadHistoryPdf } = useClinic()
   const patient = patients.find((p) => p.id === id)
-  const [activeTab, setActiveTab] = useState<TabId>('timeline')
+  const requestedTab = (location.state as { tab?: TabId } | null)?.tab
+  const [activeTab, setActiveTab] = useState<TabId>(requestedTab ?? 'timeline')
 
   const [data, setData] = useState<PatientClinicalData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -91,11 +93,22 @@ export function PatientDetail() {
     )
   }
 
-  const age = calculateAge(patient.dob)
+  const age = calculateAge(patient.dob, patient.birthYear)
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+    <div className="relative">
+      <Link
+        to="/admin/patients"
+        aria-label="Back to patients"
+        title="Back to patients"
+        className="absolute left-4 top-6 flex items-center justify-center rounded-full p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep sm:left-6"
+      >
+        <ArrowLeft size={18} />
+      </Link>
+
+      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
       <header className="flex flex-col gap-3">
+
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <p className="text-[12px] font-medium uppercase tracking-wider text-accent">Admin · Patients</p>
@@ -156,6 +169,7 @@ export function PatientDetail() {
           {activeTab === 'billing' && <BillingTab data={data} />}
         </>
       )}
+      </div>
     </div>
   )
 }

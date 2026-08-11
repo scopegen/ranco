@@ -29,7 +29,8 @@ interface RawPatient {
   name: string
   phone: string
   address: string
-  dob: string
+  dob: string | null
+  birth_year: number | null
   email: string | null
   weight: number | null
   medical_conditions: string[]
@@ -41,6 +42,7 @@ interface RawPatient {
 interface RawService {
   id: string
   name: string
+  category: string | null
   listed_price: number
   active: boolean
 }
@@ -93,6 +95,8 @@ interface RawInvoice {
   id: string
   treatment_id: string
   listed_total: number
+  discount_type: 'percent' | 'amount' | null
+  discount_value: number | null
   discount_total: number
   final_total: number
   payment_mode: PaymentMode
@@ -140,6 +144,7 @@ const toPatient = (r: RawPatient): Patient => ({
   phone: r.phone,
   address: r.address,
   dob: r.dob,
+  birthYear: r.birth_year,
   email: r.email ?? '',
   weight: r.weight === null ? '' : String(r.weight),
   medicalConditions: r.medical_conditions,
@@ -150,6 +155,7 @@ const toPatient = (r: RawPatient): Patient => ({
 const toService = (r: RawService): Service => ({
   id: r.id,
   name: r.name,
+  category: r.category,
   listedPrice: r.listed_price,
   active: r.active,
 })
@@ -202,6 +208,8 @@ const toInvoice = (r: RawInvoice): Invoice => ({
   id: r.id,
   treatmentId: r.treatment_id,
   listedTotal: r.listed_total,
+  discountType: r.discount_type,
+  discountValue: r.discount_value,
   discountTotal: r.discount_total,
   finalTotal: r.final_total,
   paymentMode: r.payment_mode,
@@ -243,18 +251,34 @@ export const clinicalApi = {
     name: string
     phone: string
     address: string
-    dob: string
+    dob?: string
+    birth_year?: number
     email?: string
     weight?: number
     medical_conditions: string[]
     medical_history?: string
   }) => api.post<RawPatient>('/patients', input).then(toPatient),
+  getPatient: (id: string) => api.get<RawPatient>(`/patients/${id}`).then(toPatient),
+  updatePatient: (
+    id: string,
+    input: {
+      name: string
+      phone: string
+      address: string
+      dob?: string
+      birth_year?: number
+      email?: string
+      weight?: number
+      medical_conditions: string[]
+      medical_history?: string
+    },
+  ) => api.patch<RawPatient>(`/patients/${id}`, input).then(toPatient),
 
   // services
   listServices: () => api.get<RawService[]>('/services').then((rs) => rs.map(toService)),
-  createService: (input: { name: string; listed_price: number; active: boolean }) =>
+  createService: (input: { name: string; category?: string; listed_price: number; active: boolean }) =>
     api.post<RawService>('/services', input).then(toService),
-  updateService: (id: string, input: { name: string; listed_price: number; active: boolean }) =>
+  updateService: (id: string, input: { name: string; category?: string; listed_price: number; active: boolean }) =>
     api.patch<RawService>(`/services/${id}`, input).then(toService),
 
   // consultations
@@ -298,12 +322,21 @@ export const clinicalApi = {
   ) => api.post<RawVisit>(`/treatments/${treatmentId}/visits`, input).then(toVisit),
 
   // invoices
-  generateInvoice: (treatmentId: string, paymentMode: PaymentMode | null) =>
+  generateInvoice: (
+    treatmentId: string,
+    paymentMode: PaymentMode | null,
+    discount?: { type: 'percent' | 'amount'; value: number } | null,
+  ) =>
     api
-      .post<RawInvoice>(`/treatments/${treatmentId}/generate-invoice`, { payment_mode: paymentMode })
+      .post<RawInvoice>(`/treatments/${treatmentId}/generate-invoice`, {
+        payment_mode: paymentMode,
+        discount_type: discount?.type,
+        discount_value: discount?.value,
+      })
       .then(toInvoice),
   getInvoice: (treatmentId: string) =>
     api.get<RawInvoice | null>(`/treatments/${treatmentId}/invoice`).then((r) => (r ? toInvoice(r) : undefined)),
+  viewInvoicePdf: (treatmentId: string) => downloadPdf(`/treatments/${treatmentId}/invoice/pdf`),
 
   // prescriptions
   listPrescriptionsForPatient: (patientId: string) =>

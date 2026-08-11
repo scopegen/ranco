@@ -47,3 +47,20 @@ def get_patient(patient_id: uuid.UUID, db: Session = Depends(get_db), current: S
     if patient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
     return patient
+
+
+@router.patch("/{patient_id}", response_model=PatientOut)
+def update_patient(
+    patient_id: uuid.UUID,
+    payload: PatientCreate,
+    db: Session = Depends(get_db),
+    current: Staff = Depends(get_current_staff),
+):
+    patient = db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    for field, value in payload.model_dump().items():
+        setattr(patient, field, value)
+    db.commit()
+    db.refresh(patient)
+    return patient

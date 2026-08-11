@@ -1,7 +1,8 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
 from app.models import PaymentMode, PaymentStatus, StaffRole, TreatmentStatus
 
@@ -43,11 +44,22 @@ class PatientCreate(BaseModel):
     name: str
     phone: str
     address: str
-    dob: date
+    # Exactly one of these is expected from the frontend, depending on which
+    # entry mode the user picked (full DOB / age / birth year only) — age
+    # itself is never sent here, the frontend converts it to birth_year
+    # before submitting.
+    dob: date | None = None
+    birth_year: int | None = None
     email: str | None = None
     weight: float | None = None
     medical_conditions: list[str] = []
     medical_history: str | None = None
+
+    @model_validator(mode="after")
+    def _require_dob_or_birth_year(self) -> "PatientCreate":
+        if self.dob is None and self.birth_year is None:
+            raise ValueError("Provide either a full date of birth or a birth year.")
+        return self
 
 
 class PatientOut(BaseModel):
@@ -57,7 +69,8 @@ class PatientOut(BaseModel):
     name: str
     phone: str
     address: str
-    dob: date
+    dob: date | None
+    birth_year: int | None
     email: str | None
     weight: float | None
     medical_conditions: list[str]
@@ -71,6 +84,7 @@ class PatientOut(BaseModel):
 
 class ServiceCreate(BaseModel):
     name: str
+    category: str | None = None
     listed_price: float
     active: bool = True
 
@@ -79,6 +93,7 @@ class ServiceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     name: str
+    category: str | None
     listed_price: float
     active: bool
 
@@ -180,6 +195,19 @@ class VisitOut(BaseModel):
 
 class GenerateInvoiceRequest(BaseModel):
     payment_mode: PaymentMode | None = None
+    discount_type: Literal["percent", "amount"] | None = None
+    discount_value: float | None = None
+
+    @model_validator(mode="after")
+    def _validate_discount(self) -> "GenerateInvoiceRequest":
+        if self.discount_type is not None and self.discount_value is None:
+            raise ValueError("discount_value is required when discount_type is set.")
+        if self.discount_value is not None:
+            if self.discount_value < 0:
+                raise ValueError("Discount can't be negative.")
+            if self.discount_type == "percent" and self.discount_value > 100:
+                raise ValueError("A percentage discount can't exceed 100.")
+        return self
 
 
 class InvoiceOut(BaseModel):
@@ -187,6 +215,8 @@ class InvoiceOut(BaseModel):
     id: uuid.UUID
     treatment_id: uuid.UUID
     listed_total: float
+    discount_type: Literal["percent", "amount"] | None
+    discount_value: float | None
     discount_total: float
     final_total: float
     payment_mode: PaymentMode

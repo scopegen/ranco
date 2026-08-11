@@ -53,7 +53,12 @@ interface ClinicContextValue {
     },
   ) => Promise<Visit>
 
-  generateInvoice: (treatmentId: string, paymentMode: PaymentMode | null) => Promise<Invoice>
+  generateInvoice: (
+    treatmentId: string,
+    paymentMode: PaymentMode | null,
+    discount?: { type: 'percent' | 'amount'; value: number } | null,
+  ) => Promise<Invoice>
+  viewInvoicePdf: (treatmentId: string) => Promise<void>
 
   addPrescription: (input: {
     patientId: string
@@ -70,8 +75,11 @@ interface ClinicContextValue {
     input: { diagnosis?: string; notes: string; advice?: string; nextVisit?: string },
   ) => Promise<PrescriptionEntry>
 
-  addService: (input: { name: string; listedPrice: number; active: boolean }) => Promise<Service>
-  updateService: (id: string, input: { name: string; listedPrice: number; active: boolean }) => Promise<Service>
+  addService: (input: { name: string; category?: string | null; listedPrice: number; active: boolean }) => Promise<Service>
+  updateService: (
+    id: string,
+    input: { name: string; category?: string | null; listedPrice: number; active: boolean },
+  ) => Promise<Service>
 
   downloadPrescriptionsPdf: (patientId: string) => Promise<void>
   downloadHistoryPdf: (patientId: string) => Promise<void>
@@ -146,8 +154,12 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  async function generateInvoice(treatmentId: string, paymentMode: PaymentMode | null) {
-    return clinicalApi.generateInvoice(treatmentId, paymentMode)
+  async function generateInvoice(
+    treatmentId: string,
+    paymentMode: PaymentMode | null,
+    discount?: { type: 'percent' | 'amount'; value: number } | null,
+  ) {
+    return clinicalApi.generateInvoice(treatmentId, paymentMode, discount)
   }
 
   async function addPrescription(input: {
@@ -182,9 +194,10 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  async function addService(input: { name: string; listedPrice: number; active: boolean }) {
+  async function addService(input: { name: string; category?: string | null; listedPrice: number; active: boolean }) {
     const created = await clinicalApi.createService({
       name: input.name,
+      category: input.category ?? undefined,
       listed_price: input.listedPrice,
       active: input.active,
     })
@@ -192,9 +205,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     return created
   }
 
-  async function updateService(id: string, input: { name: string; listedPrice: number; active: boolean }) {
+  async function updateService(
+    id: string,
+    input: { name: string; category?: string | null; listedPrice: number; active: boolean },
+  ) {
     const updated = await clinicalApi.updateService(id, {
       name: input.name,
+      category: input.category ?? undefined,
       listed_price: input.listedPrice,
       active: input.active,
     })
@@ -220,6 +237,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         updateService,
         downloadPrescriptionsPdf: clinicalApi.downloadPrescriptionsPdf,
         downloadHistoryPdf: clinicalApi.downloadHistoryPdf,
+        viewInvoicePdf: clinicalApi.viewInvoicePdf,
       }}
     >
       {children}

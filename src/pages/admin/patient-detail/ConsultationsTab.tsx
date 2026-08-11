@@ -1,4 +1,5 @@
-import { useState, type SubmitEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react'
+import { ChevronDown } from 'lucide-react'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
@@ -6,8 +7,115 @@ import { formatDate } from '../../../lib/date'
 import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
 import { Button } from '../../../components/Button'
 import { SelectField, TextareaField } from '../../../components/Field'
-import { CONSULTATION_FEE, type Consultation, type PaymentMode, type Treatment } from '../../../types/clinical'
+import { CONSULTATION_FEE, type Consultation, type PaymentMode, type Service, type Treatment } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
+
+const UNCATEGORIZED = 'General'
+
+/** Dropdown that groups services by category — click a category to expand
+ * it and reveal its services, rather than one long flat list. */
+function CategorizedServicePicker({
+  label,
+  services,
+  value,
+  onChange,
+  required,
+}: {
+  label: string
+  services: Service[]
+  value: string
+  onChange: (id: string) => void
+  required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const selected = services.find((s) => s.id === value)
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, Service[]>()
+    for (const s of services.filter((s) => s.active)) {
+      const key = s.category ?? UNCATEGORIZED
+      groups.set(key, [...(groups.get(key) ?? []), s])
+    }
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === UNCATEGORIZED) return 1
+      if (b === UNCATEGORIZED) return -1
+      return a.localeCompare(b)
+    })
+  }, [services])
+
+  useEffect(() => {
+    if (!open) return
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  function handleOpen() {
+    setExpanded(selected?.category ?? null)
+    setOpen(true)
+  }
+
+  return (
+    <div ref={ref} className="relative flex flex-col gap-1.5">
+      <span className="text-body font-medium text-ink">
+        {label}
+        {required && <span className="ml-1 text-accent">*</span>}
+      </span>
+      <button
+        type="button"
+        onClick={() => (open ? setOpen(false) : handleOpen())}
+        className="flex items-center justify-between rounded-lg border border-rule bg-white px-3.5 py-2.5 text-left text-body text-ink outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent-tint"
+      >
+        <span>{selected ? selected.name : 'Select…'}</span>
+        <ChevronDown size={16} className={`text-ink-faint transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full z-10 mt-1 max-h-80 w-full min-w-[240px] overflow-y-auto rounded-lg border border-rule bg-white shadow-lg">
+          {grouped.map(([category, groupServices]) => (
+            <div key={category}>
+              <button
+                type="button"
+                onClick={() => setExpanded((prev) => (prev === category ? null : category))}
+                className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-body font-medium text-ink transition-colors hover:bg-paper-raised"
+              >
+                {category}
+                <ChevronDown
+                  size={14}
+                  className={`text-ink-faint transition-transform ${expanded === category ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {expanded === category && (
+                <div className="flex flex-col bg-paper-raised">
+                  {groupServices.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        onChange(s.id)
+                        setOpen(false)
+                      }}
+                      className={`px-6 py-2 text-left text-[13px] transition-colors hover:bg-accent-tint ${
+                        s.id === value ? 'font-medium text-accent-deep' : 'text-ink-soft'
+                      }`}
+                    >
+                      {s.name} <span className="text-ink-faint">— {formatINR(s.listedPrice)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   patient: Patient
@@ -84,7 +192,7 @@ function NewConsultationForm({
   submitting,
 }: {
   doctors: { id: string; name: string }[]
-  services: { id: string; name: string }[]
+  services: Service[]
   onSubmit: (input: {
     doctorId: string
     findings: string
@@ -124,12 +232,12 @@ function NewConsultationForm({
           value={doctors.find((d) => d.id === doctorId)?.name}
           onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
         />
-        <SelectField
+        <CategorizedServicePicker
           label="Recommended treatment"
           required
-          options={services.map((s) => s.name)}
-          value={services.find((s) => s.id === recommendedServiceId)?.name}
-          onChange={(e) => setRecommendedServiceId(services.find((s) => s.name === e.target.value)!.id)}
+          services={services}
+          value={recommendedServiceId}
+          onChange={setRecommendedServiceId}
         />
       </div>
 
@@ -231,13 +339,7 @@ function ConsultationCard({
           {formOpen && (
             <form onSubmit={handleStart} className="flex flex-col gap-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <SelectField
-                  label="Service"
-                  required
-                  options={services.map((s) => s.name)}
-                  value={services.find((s) => s.id === serviceId)?.name}
-                  onChange={(e) => setServiceId(services.find((s) => s.name === e.target.value)!.id)}
-                />
+                <CategorizedServicePicker label="Service" required services={services} value={serviceId} onChange={setServiceId} />
                 <SelectField
                   label="Assigned doctor"
                   required

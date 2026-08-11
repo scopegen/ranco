@@ -84,3 +84,31 @@ def download_history_pdf(
         prescriptions,
     )
     return _pdf_response(content, f"history-{pdf.patient_id_str(patient.patient_number)}.pdf")
+
+
+@router.get("/treatments/{treatment_id}/invoice/pdf")
+def download_invoice_pdf(
+    treatment_id: uuid.UUID, db: Session = Depends(get_db), _current: Staff = Depends(get_current_staff)
+):
+    treatment = db.get(Treatment, treatment_id)
+    if treatment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
+
+    invoice = db.scalar(select(Invoice).where(Invoice.treatment_id == treatment_id))
+    if invoice is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No invoice generated for this treatment yet")
+
+    patient = db.get(Patient, treatment.patient_id)
+    service = db.get(Service, treatment.service_id)
+    doctor = db.get(Staff, treatment.doctor_id)
+    visits = list(db.scalars(select(Visit).where(Visit.treatment_id == treatment_id)))
+
+    content = pdf.render_invoice_pdf(
+        patient,
+        treatment,
+        service.name if service else "Unknown",
+        doctor.name if doctor else "Unknown",
+        visits,
+        invoice,
+    )
+    return _pdf_response(content, f"invoice-{pdf.patient_id_str(patient.patient_number)}-{treatment_id.hex[:8]}.pdf")
