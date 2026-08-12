@@ -92,5 +92,5 @@ export function AdminLayout() {
 }
 
 function Brand(): ReactNode {
-  return <img src="/images/Ranco-logo-new.webp" alt="Ranco Dental Clinic" className="h-8 w-auto" />
+  return <img src="/images/Ranco-logo-new.webp" alt="Ranco Dental Clinic" className="h-[52px] w-auto" />
 }
