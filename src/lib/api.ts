@@ -57,21 +57,7 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
 }
 
-/**
- * Fetches a file (PDF) and opens it in a new browser tab (the browser's
- * native PDF viewer takes over) rather than forcing an immediate download —
- * no `download` attribute, so it displays instead of saving to disk.
- * NOTE: this is the web-only path. Doesn't work the same way inside a
- * Capacitor WebView; that'll need @capacitor/filesystem + @capacitor/share
- * instead, swapped in behind a platform check, whenever this gets wrapped
- * as a native app.
- */
-export async function downloadPdf(path: string): Promise<void> {
-  // Open the tab synchronously, before the async fetch below — calling
-  // window.open() after an await loses its "direct result of a user
-  // gesture" standing and most browsers silently block it as a popup.
-  const newTab = window.open('', '_blank')
-
+async function fetchPdfBlob(path: string, onEarlyFailure?: () => void): Promise<Blob> {
   const token = getToken()
   const headers: Record<string, string> = {}
   if (token) headers.Authorization = `Bearer ${token}`
@@ -80,12 +66,12 @@ export async function downloadPdf(path: string): Promise<void> {
   try {
     res = await fetch(`${API_BASE}${path}`, { headers })
   } catch (err) {
-    newTab?.close()
+    onEarlyFailure?.()
     throw err
   }
 
   if (!res.ok) {
-    newTab?.close()
+    onEarlyFailure?.()
     let detail = res.statusText
     try {
       const body = await res.json()
@@ -96,7 +82,25 @@ export async function downloadPdf(path: string): Promise<void> {
     throw new ApiError(res.status, detail)
   }
 
-  const blob = await res.blob()
+  return res.blob()
+}
+
+/**
+ * Fetches a file (PDF) and opens it in a new browser tab (the browser's
+ * native PDF viewer takes over) rather than forcing an immediate download —
+ * no `download` attribute, so it displays instead of saving to disk.
+ * NOTE: this is the web-only path. Doesn't work the same way inside a
+ * Capacitor WebView; that'll need @capacitor/filesystem + @capacitor/share
+ * instead, swapped in behind a platform check, whenever this gets wrapped
+ * as a native app.
+ */
+export async function viewPdf(path: string): Promise<void> {
+  // Open the tab synchronously, before the async fetch below — calling
+  // window.open() after an await loses its "direct result of a user
+  // gesture" standing and most browsers silently block it as a popup.
+  const newTab = window.open('', '_blank')
+  const blob = await fetchPdfBlob(path, () => newTab?.close())
+
   const url = URL.createObjectURL(blob)
   if (newTab) {
     // Blob URL is intentionally not revoked here — the new tab needs it to
@@ -107,4 +111,22 @@ export async function downloadPdf(path: string): Promise<void> {
     // opening after the fact rather than losing the PDF entirely.
     window.open(url, '_blank')
   }
+}
+
+/**
+ * Fetches a file (PDF) and forces an actual save-to-disk download (a fake
+ * `<a download>` click), as opposed to viewPdf's "open in a new tab" —
+ * this is the web-only download path. Doesn't work the same way inside a
+ * Capacitor WebView; see viewPdf's note above.
+ */
+export async function savePdf(path: string, filenameHint = 'document.pdf'): Promise<void> {
+  const blob = await fetchPdfBlob(path)
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filenameHint
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }

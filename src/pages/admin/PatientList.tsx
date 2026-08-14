@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Search, Stethoscope, Pencil, Calendar, X } from 'lucide-react'
+import { Search, Stethoscope, Calendar, X } from 'lucide-react'
 import { Button } from '../../components/Button'
 import { usePatients } from '../../state/PatientsContext'
 import { calculateAge } from '../../lib/age'
@@ -107,35 +107,25 @@ export function PatientList() {
 
       {!loading && !error && (
         <>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1">
-              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by name, phone, or patient ID"
-                aria-label="Search patients"
-                className="w-full rounded-lg border border-rule bg-white py-2.5 pl-10 pr-3.5 text-body text-ink placeholder:text-ink-faint outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent-tint"
-              />
-            </div>
-
-            <div className="relative">
+          <div className="flex flex-nowrap items-center gap-2 sm:gap-3">
+            <div className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setDateFilterOpen((v) => !v)}
-                className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-body transition-colors ${
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-body transition-colors sm:gap-2 sm:px-3.5 ${
                   dateFilterActive
                     ? 'border-accent bg-accent-tint text-accent-deep'
                     : 'border-rule bg-white text-ink-soft hover:text-ink'
                 }`}
               >
-                <Calendar size={16} />
-                {dateFilterActive
-                  ? fromDate === toDate
-                    ? formatDate(fromDate)
-                    : `${fromDate ? formatDate(fromDate) : 'Any'} – ${toDate ? formatDate(toDate) : 'Any'}`
-                  : 'Filter by date'}
+                <Calendar size={16} className="shrink-0" />
+                <span className="hidden sm:inline">
+                  {dateFilterActive
+                    ? fromDate === toDate
+                      ? formatDate(fromDate)
+                      : `${fromDate ? formatDate(fromDate) : 'Any'} – ${toDate ? formatDate(toDate) : 'Any'}`
+                    : 'Filter by date'}
+                </span>
                 {dateFilterActive && (
                   <X
                     size={14}
@@ -152,7 +142,7 @@ export function PatientList() {
               {dateFilterOpen && (
                 <div
                   ref={popoverRef}
-                  className="absolute right-0 z-10 mt-2 flex w-[320px] flex-col gap-4 rounded-xl border border-rule bg-white p-4 shadow-lg sm:right-auto sm:left-0"
+                  className="absolute left-0 z-10 mt-2 flex w-[320px] max-w-[calc(100vw-3rem)] flex-col gap-4 rounded-xl border border-rule bg-white p-4 shadow-lg"
                 >
                   <div className="flex flex-wrap gap-1.5">
                     {DATE_PRESETS.map((preset) => (
@@ -213,6 +203,18 @@ export function PatientList() {
                 </div>
               )}
             </div>
+
+            <div className="relative min-w-0 flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name, phone, or patient ID"
+                aria-label="Search patients"
+                className="w-full min-w-0 rounded-lg border border-rule bg-white py-2.5 pl-10 pr-3.5 text-body text-ink placeholder:text-ink-faint outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-accent-tint"
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-rule bg-white shadow-sm">
@@ -249,14 +251,6 @@ export function PatientList() {
                             className="rounded-md p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep"
                           >
                             <Stethoscope size={16} />
-                          </Link>
-                          <Link
-                            to={`/admin/patients/${patient.id}/edit`}
-                            aria-label={`Edit profile for ${patient.name}`}
-                            title="Edit profile"
-                            className="rounded-md p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep"
-                          >
-                            <Pencil size={16} />
                           </Link>
                         </div>
                       </td>

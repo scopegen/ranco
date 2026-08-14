@@ -1,4 +1,4 @@
-import { api, downloadPdf } from './api'
+import { api, savePdf, viewPdf } from './api'
 import type { Patient } from '../state/PatientsContext'
 import type {
   Consultation,
@@ -57,6 +57,7 @@ interface RawConsultation {
   payment_status: PaymentStatus
   payment_mode: PaymentMode | null
   recommended_service_id: string | null
+  updated_at: string
 }
 
 interface RawTreatment {
@@ -170,6 +171,7 @@ const toConsultation = (r: RawConsultation): Consultation => ({
   paymentStatus: r.payment_status,
   paymentMode: r.payment_mode ?? undefined,
   recommendedServiceId: r.recommended_service_id ?? undefined,
+  updatedAt: r.updated_at,
 })
 
 const toTreatment = (r: RawTreatment): Treatment => ({
@@ -296,6 +298,22 @@ export const clinicalApi = {
       recommended_service_id?: string
     },
   ) => api.post<RawConsultation>(`/patients/${patientId}/consultations`, input).then(toConsultation),
+  updateConsultation: (
+    patientId: string,
+    consultationId: string,
+    input: {
+      doctor_id: string
+      consult_date: string
+      fee: number
+      findings: string
+      payment_status: PaymentStatus
+      payment_mode?: PaymentMode
+      recommended_service_id?: string
+    },
+  ) =>
+    api
+      .patch<RawConsultation>(`/patients/${patientId}/consultations/${consultationId}`, input)
+      .then(toConsultation),
 
   // treatments
   listTreatments: (patientId: string) =>
@@ -336,7 +354,7 @@ export const clinicalApi = {
       .then(toInvoice),
   getInvoice: (treatmentId: string) =>
     api.get<RawInvoice | null>(`/treatments/${treatmentId}/invoice`).then((r) => (r ? toInvoice(r) : undefined)),
-  viewInvoicePdf: (treatmentId: string) => downloadPdf(`/treatments/${treatmentId}/invoice/pdf`),
+  viewInvoicePdf: (treatmentId: string) => viewPdf(`/treatments/${treatmentId}/invoice/pdf`),
 
   // prescriptions
   listPrescriptionsForPatient: (patientId: string) =>
@@ -356,6 +374,9 @@ export const clinicalApi = {
   ) => api.patch<RawPrescriptionEntry>(`/prescriptions/${entryId}`, input).then(toPrescriptionEntry),
 
   // documents
-  downloadPrescriptionsPdf: (patientId: string) => downloadPdf(`/patients/${patientId}/prescriptions/pdf`),
-  downloadHistoryPdf: (patientId: string) => downloadPdf(`/patients/${patientId}/history/pdf`),
+  viewPrescriptionsPdf: (patientId: string) => viewPdf(`/patients/${patientId}/prescriptions/pdf`),
+  viewHistoryPdf: (patientId: string) => viewPdf(`/patients/${patientId}/history/pdf`),
+  savePrescriptionsPdf: (patientId: string, filenameHint?: string) =>
+    savePdf(`/patients/${patientId}/prescriptions/pdf`, filenameHint),
+  saveHistoryPdf: (patientId: string, filenameHint?: string) => savePdf(`/patients/${patientId}/history/pdf`, filenameHint),
 }

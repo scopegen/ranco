@@ -122,6 +122,7 @@ class ConsultationOut(BaseModel):
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None
     recommended_service_id: uuid.UUID | None
+    updated_at: datetime
 
 
 # ---- Treatment ----

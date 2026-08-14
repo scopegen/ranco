@@ -36,3 +36,21 @@ def list_consultations(
     return db.scalars(
         select(Consultation).where(Consultation.patient_id == patient_id).order_by(Consultation.consult_date.desc())
     ).all()
+
+
+@router.patch("/patients/{patient_id}/consultations/{consultation_id}", response_model=ConsultationOut)
+def update_consultation(
+    patient_id: uuid.UUID,
+    consultation_id: uuid.UUID,
+    payload: ConsultationCreate,
+    db: Session = Depends(get_db),
+    _current: Staff = Depends(get_current_staff),
+):
+    consultation = db.get(Consultation, consultation_id)
+    if consultation is None or consultation.patient_id != patient_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation not found")
+    for field, value in payload.model_dump().items():
+        setattr(consultation, field, value)
+    db.commit()
+    db.refresh(consultation)
+    return consultation

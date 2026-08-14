@@ -117,6 +117,7 @@ class Consultation(Base):
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, name="payment_status"), nullable=False)
     payment_mode: Mapped[PaymentMode | None] = mapped_column(Enum(PaymentMode, name="payment_mode"))
     recommended_service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("services.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class Treatment(Base):

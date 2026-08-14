@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Eye } from 'lucide-react'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
-import { formatDate } from '../../../lib/date'
-import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
+import { formatDate, formatDateTime } from '../../../lib/date'
 import { Button } from '../../../components/Button'
-import { SelectField, TextareaField } from '../../../components/Field'
+import { Field, SelectField, TextareaField } from '../../../components/Field'
 import { CONSULTATION_FEE, type Consultation, type PaymentMode, type Service, type Treatment } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 
@@ -285,8 +284,9 @@ function ConsultationCard({
   treatment: Treatment | undefined
   onChange: () => void
 }) {
-  const { doctors, services, doctorName, serviceName, startTreatment } = useClinic()
+  const { doctors, services, doctorName, startTreatment } = useClinic()
   const [formOpen, setFormOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [serviceId, setServiceId] = useState(consultation.recommendedServiceId ?? services[0]?.id)
   const [doctorId, setDoctorId] = useState(doctors[0]?.id)
@@ -306,60 +306,175 @@ function ConsultationCard({
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-subheading font-medium text-ink">{doctorName(consultation.doctorId)}</p>
+        <p className="text-subheading font-medium text-ink">{doctorName(consultation.doctorId)}</p>
+        <div className="flex items-center gap-2">
           <p className="text-[12px] text-ink-faint">{formatDate(consultation.consultDate)}</p>
+          <button
+            type="button"
+            onClick={() => setEditOpen((v) => !v)}
+            aria-label="View / edit consultation"
+            title="View / edit"
+            className={`flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 transition-colors ${
+              editOpen ? 'bg-accent-tint text-accent-deep' : 'text-ink-soft hover:bg-accent-tint hover:text-accent-deep'
+            }`}
+          >
+            <Eye size={15} />
+          </button>
         </div>
-        <PaymentStatusPill status={consultation.paymentStatus} />
       </div>
 
-      <p className="text-ink-soft">{consultation.findings}</p>
+      {editOpen && (
+        <>
+          <EditConsultationForm
+            consultation={consultation}
+            doctors={doctors}
+            services={services}
+            onSaved={() => {
+              setEditOpen(false)
+              onChange()
+            }}
+            onCancel={() => setEditOpen(false)}
+          />
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-rule pt-3 text-[13px]">
-        <span className="text-ink-soft">
-          Recommended: <span className="font-medium text-ink">{serviceName(consultation.recommendedServiceId)}</span>
-        </span>
-        <span className="text-ink-soft">
-          Fee: <span className="font-medium text-ink">{formatINR(consultation.fee)}</span>
-          {consultation.paymentMode && ` · ${consultation.paymentMode.toUpperCase()}`}
-        </span>
-      </div>
-
-      {treatment ? (
-        <p className="border-t border-rule pt-3 text-[13px] text-ink-soft">
-          Treatment started — see <span className="font-medium text-ink">Treatments</span> tab.
-        </p>
-      ) : (
-        <div className="border-t border-rule pt-3">
-          {!formOpen && (
-            <Button variant="secondary" onClick={() => setFormOpen(true)}>
-              Start treatment
-            </Button>
-          )}
-          {formOpen && (
-            <form onSubmit={handleStart} className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <CategorizedServicePicker label="Service" required services={services} value={serviceId} onChange={setServiceId} />
-                <SelectField
-                  label="Assigned doctor"
-                  required
-                  options={doctors.map((d) => d.name)}
-                  value={doctors.find((d) => d.id === doctorId)?.name}
-                  onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
-                />
-              </div>
-              <div className="flex gap-3">
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? 'Starting…' : 'Start treatment'}
+          {treatment ? (
+            <p className="border-t border-rule pt-3 text-[13px] text-ink-soft">
+              Treatment started — see <span className="font-medium text-ink">Treatments</span> tab.
+            </p>
+          ) : (
+            <div className="border-t border-rule pt-3">
+              {!formOpen && (
+                <Button variant="secondary" onClick={() => setFormOpen(true)}>
+                  Start treatment
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
+              )}
+              {formOpen && (
+                <form onSubmit={handleStart} className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <CategorizedServicePicker label="Service" required services={services} value={serviceId} onChange={setServiceId} />
+                    <SelectField
+                      label="Assigned doctor"
+                      required
+                      options={doctors.map((d) => d.name)}
+                      value={doctors.find((d) => d.id === doctorId)?.name}
+                      onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button type="submit" disabled={submitting}>
+                      {submitting ? 'Starting…' : 'Start treatment'}
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
+  )
+}
+
+function EditConsultationForm({
+  consultation,
+  doctors,
+  services,
+  onSaved,
+  onCancel,
+}: {
+  consultation: Consultation
+  doctors: { id: string; name: string }[]
+  services: Service[]
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const { updateConsultation } = useClinic()
+  const [doctorId, setDoctorId] = useState(consultation.doctorId)
+  const [consultDate, setConsultDate] = useState(consultation.consultDate)
+  const [findings, setFindings] = useState(consultation.findings)
+  const [recommendedServiceId, setRecommendedServiceId] = useState(consultation.recommendedServiceId ?? services[0]?.id)
+  const [fee, setFee] = useState(String(consultation.fee))
+  const [paid, setPaid] = useState(consultation.paymentStatus === 'paid')
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>(consultation.paymentMode ?? 'cash')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: SubmitEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    try {
+      await updateConsultation(consultation.patientId, consultation.id, {
+        doctorId,
+        consultDate,
+        fee: Number(fee),
+        findings,
+        paymentStatus: paid ? 'paid' : 'unpaid',
+        paymentMode: paid ? paymentMode : undefined,
+        recommendedServiceId,
+      })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 border-t border-rule pt-4">
+      <p className="text-[12px] text-ink-faint">Last updated: {formatDateTime(consultation.updatedAt)}</p>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <SelectField
+          label="Consulting doctor"
+          required
+          options={doctors.map((d) => d.name)}
+          value={doctors.find((d) => d.id === doctorId)?.name}
+          onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
+        />
+        <Field label="Consultation date" required type="date" value={consultDate} onChange={(e) => setConsultDate(e.target.value)} max={today()} />
+      </div>
+
+      <CategorizedServicePicker
+        label="Recommended treatment"
+        required
+        services={services}
+        value={recommendedServiceId}
+        onChange={setRecommendedServiceId}
+      />
+
+      <TextareaField label="Findings" required value={findings} onChange={(e) => setFindings(e.target.value)} />
+
+      <div className="flex flex-wrap items-end gap-5 border-t border-rule pt-4">
+        <Field label="Fee" required type="number" min="0" value={fee} onChange={(e) => setFee(e.target.value)} className="w-32" />
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} className="h-4 w-4 accent-accent" />
+          Paid
+        </label>
+        {paid && (
+          <SelectField
+            label="Payment mode"
+            options={['cash', 'card', 'upi']}
+            value={paymentMode}
+            onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
+            className="w-40"
+          />
+        )}
+      </div>
+
+      {error && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{error}</p>}
+
+      <div className="flex gap-3">
+        <Button type="submit" disabled={submitting}>
+          {submitting ? 'Saving…' : 'Save'}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   )
 }

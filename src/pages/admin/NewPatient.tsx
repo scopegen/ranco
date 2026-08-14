@@ -170,18 +170,33 @@ export function NewPatient() {
 
   return (
     <div className="relative">
+      {/* Desktop: arrow floats in the corner */}
       <Link
         to={isEditing && id ? `/admin/patients/${id}` : '/admin/patients'}
         aria-label={isEditing ? 'Back to patient' : 'Back to patients'}
         title={isEditing ? 'Back to patient' : 'Back to patients'}
-        className="absolute left-4 top-6 flex items-center justify-center rounded-full p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep sm:left-6"
+        className="absolute left-4 top-6 hidden items-center justify-center rounded-full p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep sm:left-6 md:flex"
       >
         <ArrowLeft size={18} />
       </Link>
 
       <div className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-10">
       <header className="flex flex-col gap-2">
-        <p className="text-[12px] font-medium uppercase tracking-wider text-accent">Admin · Patients</p>
+        {/* Mobile: arrow + eyebrow in a single row */}
+        <div className="flex items-center gap-2 md:hidden">
+          <Link
+            to={isEditing && id ? `/admin/patients/${id}` : '/admin/patients'}
+            aria-label={isEditing ? 'Back to patient' : 'Back to patients'}
+            title={isEditing ? 'Back to patient' : 'Back to patients'}
+            className="flex items-center justify-center rounded-full border border-rule bg-paper-raised p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
+          >
+            <ArrowLeft size={16} />
+          </Link>
+          <p className="rounded-md bg-white px-2.5 py-1 text-[12px] font-medium uppercase tracking-wider text-accent">
+            Admin · Patients
+          </p>
+        </div>
+        <p className="hidden text-[12px] font-medium uppercase tracking-wider text-accent md:block">Admin · Patients</p>
         <h1>{isEditing ? 'Edit patient' : 'Add patient'}</h1>
         <p className="max-w-[52ch] text-ink-soft">
           Name, phone, address, and some form of date of birth are required — this is the record

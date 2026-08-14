@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, Package, Receipt, Stethoscope, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../state/AuthContext'
@@ -10,6 +10,10 @@ const navItems = [
   { to: '/admin/services', label: 'Services', icon: Package, adminOnly: true },
 ]
 
+// Matches /admin/patients/<id> but not /admin/patients/new or the /edit
+// sub-route — those still want the normal global nav.
+const PATIENT_DETAIL_PATH = /^\/admin\/patients\/(?!new$)[^/]+$/
+
 function navLinkClass({ isActive }: { isActive: boolean }) {
   return isActive
     ? 'bg-accent-tint text-accent-deep'
@@ -19,7 +23,11 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 export function AdminLayout() {
   const { staff, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || staff?.role === 'admin')
+  // Patient detail pages render their own mobile bottom bar (the patient's
+  // own tabs) in place of the global nav — see PatientDetail.tsx.
+  const isPatientDetailPage = PATIENT_DETAIL_PATH.test(location.pathname)
 
   function handleLogout() {
     logout()
@@ -68,12 +76,16 @@ export function AdminLayout() {
         </button>
       </header>
 
-      <main className="flex-1 pb-20 md:pb-0">
+      <main className={`flex-1 md:pb-0 ${isPatientDetailPage ? '' : 'pb-20'}`}>
         <Outlet />
       </main>
 
-      {/* mobile bottom tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-rule bg-white md:hidden">
+      {/* mobile bottom tab bar — hidden on patient detail pages, which render their own */}
+      <nav
+        className={`fixed inset-x-0 bottom-0 z-10 border-t border-rule bg-white md:hidden ${
+          isPatientDetailPage ? 'hidden' : 'flex'
+        }`}
+      >
         {visibleNavItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}

@@ -32,6 +32,7 @@ export interface Consultation {
   paymentStatus: PaymentStatus
   paymentMode?: PaymentMode
   recommendedServiceId?: string
+  updatedAt: string
 }
 
 export interface Treatment {

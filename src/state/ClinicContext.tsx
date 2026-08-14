@@ -37,6 +37,19 @@ interface ClinicContextValue {
       recommendedServiceId?: string
     },
   ) => Promise<Consultation>
+  updateConsultation: (
+    patientId: string,
+    consultationId: string,
+    input: {
+      doctorId: string
+      consultDate: string
+      fee: number
+      findings: string
+      paymentStatus: PaymentStatus
+      paymentMode?: PaymentMode
+      recommendedServiceId?: string
+    },
+  ) => Promise<Consultation>
 
   startTreatment: (
     consultationId: string,
@@ -81,8 +94,10 @@ interface ClinicContextValue {
     input: { name: string; category?: string | null; listedPrice: number; active: boolean },
   ) => Promise<Service>
 
-  downloadPrescriptionsPdf: (patientId: string) => Promise<void>
-  downloadHistoryPdf: (patientId: string) => Promise<void>
+  viewPrescriptionsPdf: (patientId: string) => Promise<void>
+  viewHistoryPdf: (patientId: string) => Promise<void>
+  savePrescriptionsPdf: (patientId: string, filenameHint?: string) => Promise<void>
+  saveHistoryPdf: (patientId: string, filenameHint?: string) => Promise<void>
 }
 
 const ClinicContext = createContext<ClinicContextValue | null>(null)
@@ -120,6 +135,30 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     },
   ) {
     return clinicalApi.createConsultation(patientId, {
+      doctor_id: input.doctorId,
+      consult_date: input.consultDate,
+      fee: input.fee,
+      findings: input.findings,
+      payment_status: input.paymentStatus,
+      payment_mode: input.paymentMode,
+      recommended_service_id: input.recommendedServiceId,
+    })
+  }
+
+  async function updateConsultation(
+    patientId: string,
+    consultationId: string,
+    input: {
+      doctorId: string
+      consultDate: string
+      fee: number
+      findings: string
+      paymentStatus: PaymentStatus
+      paymentMode?: PaymentMode
+      recommendedServiceId?: string
+    },
+  ) {
+    return clinicalApi.updateConsultation(patientId, consultationId, {
       doctor_id: input.doctorId,
       consult_date: input.consultDate,
       fee: input.fee,
@@ -228,6 +267,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         doctorName,
         serviceName,
         addConsultation,
+        updateConsultation,
         startTreatment,
         logVisit,
         generateInvoice,
@@ -235,8 +275,10 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         editPrescription,
         addService,
         updateService,
-        downloadPrescriptionsPdf: clinicalApi.downloadPrescriptionsPdf,
-        downloadHistoryPdf: clinicalApi.downloadHistoryPdf,
+        viewPrescriptionsPdf: clinicalApi.viewPrescriptionsPdf,
+        viewHistoryPdf: clinicalApi.viewHistoryPdf,
+        savePrescriptionsPdf: clinicalApi.savePrescriptionsPdf,
+        saveHistoryPdf: clinicalApi.saveHistoryPdf,
         viewInvoicePdf: clinicalApi.viewInvoicePdf,
       }}
     >
