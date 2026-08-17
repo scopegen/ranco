@@ -66,7 +66,7 @@ def download_history_pdf(
         e.added_by for e in prescriptions
     }
     service_ids = {t.service_id for t in treatments} | {
-        c.recommended_service_id for c in consultations if c.recommended_service_id
+        sid for c in consultations for sid in c.recommended_service_ids
     }
     staff_by_id = {s.id: s for s in db.scalars(select(Staff).where(Staff.id.in_(staff_ids)))} if staff_ids else {}
     service_by_id = (

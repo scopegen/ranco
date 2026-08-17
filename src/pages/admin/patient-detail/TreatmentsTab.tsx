@@ -1,15 +1,15 @@
 import { useMemo, useState, type SubmitEvent } from 'react'
-import { FileText } from 'lucide-react'
+import { Eye, FileText } from 'lucide-react'
 import { Pill } from '../../../components/Pill'
-import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
 import { Button } from '../../../components/Button'
 import { Field, SelectField, TextareaField } from '../../../components/Field'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate } from '../../../lib/date'
-import { visitAmount, type Invoice, type PaymentMode, type Treatment, type Visit } from '../../../types/clinical'
+import { visitAmount, type Consultation, type Invoice, type PaymentMode, type Treatment, type Visit } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
+import { CategorizedServicePicker } from './ConsultationsTab'
 
 interface Props {
   patient: Patient
@@ -18,12 +18,22 @@ interface Props {
 }
 
 export function TreatmentsTab({ patient, data, onChange }: Props) {
-  if (data.treatments.length === 0) {
-    return <p className="text-ink-soft">No treatments yet — start one from the Consultations tab.</p>
+  // A consultation moves here, as an actionable "start treatment" prompt,
+  // the moment it's saved — the doctor no longer starts a treatment from
+  // inside the consultation itself.
+  const pendingConsultations = data.consultations
+    .filter((c) => !data.treatments.some((t) => t.consultationId === c.id))
+    .sort((a, b) => b.consultDate.localeCompare(a.consultDate))
+
+  if (data.treatments.length === 0 && pendingConsultations.length === 0) {
+    return <p className="text-ink-soft">No consultations yet — add one from the Consultations tab.</p>
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {pendingConsultations.map((consultation) => (
+        <StartTreatmentCard key={consultation.id} consultation={consultation} onChange={onChange} />
+      ))}
       {data.treatments.map((treatment) => (
         <TreatmentCard
           key={treatment.id}
@@ -33,6 +43,75 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
           onChange={onChange}
         />
       ))}
+    </div>
+  )
+}
+
+function StartTreatmentCard({ consultation, onChange }: { consultation: Consultation; onChange: () => void }) {
+  const { doctors, services, doctorName, serviceName, startTreatment } = useClinic()
+  const [formOpen, setFormOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [serviceId, setServiceId] = useState(consultation.recommendedServiceIds[0] ?? services[0]?.id)
+  const [doctorId, setDoctorId] = useState(consultation.doctorId ?? doctors[0]?.id)
+
+  async function handleSubmit(e: SubmitEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    try {
+      await startTreatment(consultation.id, { serviceId, doctorId, startedAt: today() })
+      onChange()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const recommendedNames = consultation.recommendedServiceIds.map((id) => serviceName(id))
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-subheading font-medium text-ink">
+            {recommendedNames.length > 0 ? recommendedNames.join(', ') : 'Consultation'}
+          </p>
+          <p className="text-[12px] text-ink-faint">
+            {doctorName(consultation.doctorId)} &middot; consulted {formatDate(consultation.consultDate)}
+          </p>
+          {consultation.recommendationNote && (
+            <p className="mt-1 text-[12px] italic text-ink-soft">&ldquo;{consultation.recommendationNote}&rdquo;</p>
+          )}
+        </div>
+        <Pill variant="outline">Awaiting treatment</Pill>
+      </div>
+
+      {!formOpen && (
+        <Button variant="secondary" onClick={() => setFormOpen(true)}>
+          Start treatment
+        </Button>
+      )}
+
+      {formOpen && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-white p-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <CategorizedServicePicker label="Service" required services={services} value={serviceId} onChange={setServiceId} />
+            <SelectField
+              label="Assigned doctor"
+              required
+              options={doctors.map((d) => d.name)}
+              value={doctors.find((d) => d.id === doctorId)?.name}
+              onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
+            />
+          </div>
+          <div className="flex gap-3">
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Starting…' : 'Start treatment'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   )
 }
@@ -49,6 +128,7 @@ function TreatmentCard({
   onChange: () => void
 }) {
   const { doctorName, serviceName, logVisit, addPrescription, generateInvoice, viewInvoicePdf } = useClinic()
+  const [expanded, setExpanded] = useState(false)
   const [visitFormOpen, setVisitFormOpen] = useState(false)
   const [invoiceFormOpen, setInvoiceFormOpen] = useState(false)
   const [viewingInvoice, setViewingInvoice] = useState(false)
@@ -79,15 +159,9 @@ function TreatmentCard({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-rule bg-white p-5 shadow-sm">
+    <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-subheading font-medium text-ink">{serviceLabel}</p>
-          <p className="text-[12px] text-ink-faint">
-            {doctorName(treatment.doctorId)} · started {formatDate(treatment.startedAt)}
-            {treatment.completedAt && ` · finished ${formatDate(treatment.completedAt)}`}
-          </p>
-        </div>
+        <p className="text-subheading font-medium text-ink">{serviceLabel}</p>
         {treatment.status === 'finished' ? (
           <Pill variant="solid">Finished</Pill>
         ) : (
@@ -95,72 +169,97 @@ function TreatmentCard({
         )}
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-rule pt-3">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">Visits ({visits.length})</p>
-        {visits.length === 0 && <p className="text-[13px] text-ink-faint">No visits logged yet.</p>}
-        {visits.map((visit) => (
-          <div key={visit.id} className="flex items-center justify-between gap-3 text-[13px]">
-            <span className="text-ink-soft">{formatDate(visit.visitDate)}</span>
-            <span className="font-medium text-ink">{formatINR(visitAmount(visit))}</span>
-            <PaymentStatusPill status={visit.paymentStatus} />
-          </div>
-        ))}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12px] text-ink-faint">
+          started {formatDate(treatment.startedAt)}
+          {treatment.completedAt && ` · finished ${formatDate(treatment.completedAt)}`}
+        </p>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-label="View treatment details"
+          title="View"
+          className={`flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 transition-colors ${
+            expanded ? 'bg-accent-tint text-accent-deep' : 'text-ink-soft hover:bg-accent-tint hover:text-accent-deep'
+          }`}
+        >
+          <Eye size={15} />
+        </button>
       </div>
 
-      {treatment.status === 'ongoing' && (
+      {expanded && (
         <div className="flex flex-col gap-4 border-t border-rule pt-4">
-          {!visitFormOpen && !invoiceFormOpen && (
-            <div className="flex flex-wrap gap-3">
-              <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
-                + Log visit
-              </Button>
-              <Button variant="secondary" onClick={() => setInvoiceFormOpen(true)}>
-                Mark finished / generate invoice
-              </Button>
+          <p className="text-[12px] text-ink-faint">{doctorName(treatment.doctorId)}</p>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">Visits ({visits.length})</p>
+            {visits.length === 0 && <p className="text-[13px] text-ink-faint">No visits logged yet.</p>}
+            {/* Visits are an activity log only now — no per-visit price or
+                payment status. The treatment as a whole is billed once, on
+                the Billing tab. */}
+            {visits.map((visit) => (
+              <div key={visit.id} className="text-[13px] text-ink-soft">
+                {formatDate(visit.visitDate)}
+              </div>
+            ))}
+          </div>
+
+          {treatment.status === 'ongoing' && (
+            <div className="flex flex-col gap-4 border-t border-rule pt-4">
+              {!visitFormOpen && !invoiceFormOpen && (
+                <div className="flex flex-wrap gap-3">
+                  <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
+                    + Log visit
+                  </Button>
+                  <Button variant="secondary" onClick={() => setInvoiceFormOpen(true)}>
+                    Mark finished / generate invoice
+                  </Button>
+                </div>
+              )}
+
+              {visitFormOpen && (
+                <LogVisitForm
+                  onSubmit={async (input) => {
+                    const visit = await logVisit(treatment.id, { visitDate: input.visitDate })
+                    if (input.prescription) {
+                      await addPrescription({
+                        patientId: patient.id,
+                        visitId: visit.id,
+                        diagnosis: input.prescription.diagnosis,
+                        notes: input.prescription.notes,
+                        advice: input.prescription.advice,
+                        nextVisit: input.prescription.nextVisit,
+                      })
+                    }
+                    setVisitFormOpen(false)
+                    onChange()
+                  }}
+                  onCancel={() => setVisitFormOpen(false)}
+                />
+              )}
+
+              {invoiceFormOpen && (
+                <GenerateInvoiceForm
+                  treatmentId={treatment.id}
+                  unpaidTotal={unpaidTotal}
+                  generateInvoice={generateInvoice}
+                  viewInvoicePdf={viewInvoicePdf}
+                  onDone={handleInvoiceDone}
+                  onCancel={() => setInvoiceFormOpen(false)}
+                />
+              )}
             </div>
           )}
 
-          {visitFormOpen && (
-            <LogVisitForm
-              onSubmit={async (input) => {
-                const visit = await logVisit(treatment.id, input)
-                if (input.prescription) {
-                  await addPrescription({
-                    patientId: patient.id,
-                    visitId: visit.id,
-                    diagnosis: input.prescription.diagnosis,
-                    notes: input.prescription.notes,
-                    advice: input.prescription.advice,
-                    nextVisit: input.prescription.nextVisit,
-                  })
-                }
-                setVisitFormOpen(false)
-                onChange()
-              }}
-              onCancel={() => setVisitFormOpen(false)}
-            />
+          {treatment.status === 'finished' && (
+            <div className="flex flex-col gap-2 border-t border-rule pt-4">
+              <Button variant="secondary" onClick={handleViewInvoice} disabled={viewingInvoice}>
+                <FileText size={15} className="mr-1.5 inline" />
+                {viewingInvoice ? 'Opening…' : 'View invoice'}
+              </Button>
+              {viewError && <p className="text-[13px] text-crit">{viewError}</p>}
+            </div>
           )}
-
-          {invoiceFormOpen && (
-            <GenerateInvoiceForm
-              treatmentId={treatment.id}
-              unpaidTotal={unpaidTotal}
-              generateInvoice={generateInvoice}
-              viewInvoicePdf={viewInvoicePdf}
-              onDone={handleInvoiceDone}
-              onCancel={() => setInvoiceFormOpen(false)}
-            />
-          )}
-        </div>
-      )}
-
-      {treatment.status === 'finished' && (
-        <div className="flex flex-col gap-2 border-t border-rule pt-4">
-          <Button variant="secondary" onClick={handleViewInvoice} disabled={viewingInvoice}>
-            <FileText size={15} className="mr-1.5 inline" />
-            {viewingInvoice ? 'Opening…' : 'View invoice'}
-          </Button>
-          {viewError && <p className="text-[13px] text-crit">{viewError}</p>}
         </div>
       )}
     </div>
@@ -178,19 +277,10 @@ function LogVisitForm({
   onSubmit,
   onCancel,
 }: {
-  onSubmit: (input: {
-    visitDate: string
-    listedPrice: number
-    paymentStatus: 'paid' | 'unpaid'
-    paymentMode?: PaymentMode
-    prescription?: PrescriptionInput
-  }) => Promise<void>
+  onSubmit: (input: { visitDate: string; prescription?: PrescriptionInput }) => Promise<void>
   onCancel: () => void
 }) {
   const [visitDate, setVisitDate] = useState(today())
-  const [amount, setAmount] = useState('')
-  const [paidNow, setPaidNow] = useState(false)
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
   const [submitting, setSubmitting] = useState(false)
 
   const [addRx, setAddRx] = useState(false)
@@ -203,11 +293,11 @@ function LogVisitForm({
     e.preventDefault()
     setSubmitting(true)
     try {
+      // No price/payment info collected here at all — billing happens
+      // separately, on its own track. The amount is derived automatically
+      // from the treatment's service by the caller.
       await onSubmit({
         visitDate,
-        listedPrice: Number(amount),
-        paymentStatus: paidNow ? 'paid' : 'unpaid',
-        paymentMode: paidNow ? paymentMode : undefined,
         prescription: addRx
           ? {
               diagnosis: diagnosis || undefined,
@@ -224,26 +314,7 @@ function LogVisitForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-paper-raised p-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Visit date" required type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} max={today()} />
-        <Field label="Amount" required type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1500" />
-      </div>
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="flex items-center gap-2 text-body text-ink">
-          <input type="checkbox" checked={paidNow} onChange={(e) => setPaidNow(e.target.checked)} className="h-4 w-4 accent-accent" />
-          Paid at this visit
-        </label>
-        {paidNow && (
-          <SelectField
-            label="Payment mode"
-            options={['cash', 'card', 'upi']}
-            value={paymentMode}
-            onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-            className="w-40"
-          />
-        )}
-      </div>
-
+      <Field label="Visit date" required type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} max={today()} />
       <label className="flex items-center gap-2 border-t border-rule pt-4 text-body text-ink">
         <input type="checkbox" checked={addRx} onChange={(e) => setAddRx(e.target.checked)} className="h-4 w-4 accent-accent" />
         Add a prescription for this visit

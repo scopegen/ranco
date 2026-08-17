@@ -55,6 +55,11 @@ class TreatmentStatus(str, PyEnum):
     finished = "finished"
 
 
+class ServiceType(str, PyEnum):
+    dental = "dental"
+    lab = "lab"
+
+
 class Staff(Base):
     __tablename__ = "staff"
 
@@ -101,6 +106,11 @@ class Service(Base):
     # RCT" / "Re-RCT" / etc. variants) — purely for display grouping, no
     # relational meaning, so a plain nullable string is enough.
     category: Mapped[str | None] = mapped_column(String(80))
+    # Whether the clinic performs this in-house (dental) or it's fulfilled by
+    # an external lab (lab) — e.g. crowns/bridges sent out for fabrication.
+    service_type: Mapped[ServiceType] = mapped_column(
+        Enum(ServiceType, name="service_type"), default=ServiceType.dental, nullable=False
+    )
     listed_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -116,7 +126,15 @@ class Consultation(Base):
     findings: Mapped[str] = mapped_column(Text, nullable=False)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, name="payment_status"), nullable=False)
     payment_mode: Mapped[PaymentMode | None] = mapped_column(Enum(PaymentMode, name="payment_mode"))
-    recommended_service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("services.id"))
+    # Set when admin records the (one-time, full) consultation payment —
+    # doctors never touch this. Separate from updated_at below, which
+    # tracks edits to the clinical record itself.
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A consultation can recommend several catalog services at once (no
+    # per-element FK — same tradeoff as Patient.medical_conditions above),
+    # plus a free-text note for anything not in the catalog.
+    recommended_service_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list, nullable=False)
+    recommendation_note: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
@@ -133,6 +151,18 @@ class Treatment(Base):
     )
     started_at: Mapped[date] = mapped_column(Date, nullable=False)
     completed_at: Mapped[date | None] = mapped_column(Date)
+    # Billing (separate from the older per-treatment Invoice below, which is
+    # a distinct generate-a-PDF flow left untouched for now).
+    #
+    # service_price is a SNAPSHOT of Service.listed_price taken the moment
+    # the treatment is started — deliberately NOT looked up live from the
+    # service catalog. If the clinic later raises/lowers that service's
+    # price, treatments already in progress (or finished) must keep billing
+    # at the price the patient was originally quoted; only new treatments
+    # started after the change pick up the new catalog price.
+    service_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    discount_type: Mapped[str | None] = mapped_column(String(10))
+    discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
 
 
 class TreatmentHandoff(Base):
@@ -153,13 +183,32 @@ class Visit(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     treatment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("treatments.id"), nullable=False)
     visit_date: Mapped[date] = mapped_column(Date, nullable=False)
-    listed_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # Visits no longer carry pricing — a treatment is billed once, as a
+    # whole (see TreatmentPayment below), not per visit. These stay
+    # nullable/unused for new visits rather than dropped, so historical
+    # visits logged before this change keep their recorded amounts.
+    listed_price: Mapped[float | None] = mapped_column(Numeric(10, 2))
     discounted_price: Mapped[float | None] = mapped_column(Numeric(10, 2))
     payment_status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus, name="payment_status"), default=PaymentStatus.unpaid, nullable=False
     )
     payment_mode: Mapped[PaymentMode | None] = mapped_column(Enum(PaymentMode, name="payment_mode"))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TreatmentPayment(Base):
+    """A single payment toward a treatment's total charge. Multiple rows per
+    treatment support partial/installment payments — a treatment can span
+    several visits over days, unlike a consultation's one-time fee."""
+
+    __tablename__ = "treatment_payments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    treatment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("treatments.id"), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    payment_mode: Mapped[PaymentMode] = mapped_column(Enum(PaymentMode, name="payment_mode"), nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    recorded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
 
 
 class PrescriptionEntry(Base):

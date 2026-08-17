@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react'
-import { ChevronDown, Eye } from 'lucide-react'
+import { ChevronDown, Eye, X } from 'lucide-react'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate, formatDateTime } from '../../../lib/date'
 import { Button } from '../../../components/Button'
 import { Field, SelectField, TextareaField } from '../../../components/Field'
-import { CONSULTATION_FEE, type Consultation, type PaymentMode, type Service, type Treatment } from '../../../types/clinical'
+import { CONSULTATION_FEE, type Consultation, type Service, type Treatment } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 
 const UNCATEGORIZED = 'General'
 
 /** Dropdown that groups services by category — click a category to expand
  * it and reveal its services, rather than one long flat list. */
-function CategorizedServicePicker({
+export function CategorizedServicePicker({
   label,
   services,
   value,
@@ -116,6 +116,63 @@ function CategorizedServicePicker({
   )
 }
 
+/** A doctor can recommend more than one catalog service for the same
+ * consultation — pick one at a time from the dropdown and add it to the
+ * list; each added service shows as a removable chip below. */
+function RecommendedServicesPicker({
+  services,
+  value,
+  onChange,
+}: {
+  services: Service[]
+  value: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const [pickerValue, setPickerValue] = useState(services[0]?.id ?? '')
+
+  function handleAdd() {
+    if (!pickerValue || value.includes(pickerValue)) return
+    onChange([...value, pickerValue])
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <CategorizedServicePicker label="Recommended treatment" services={services} value={pickerValue} onChange={setPickerValue} />
+        </div>
+        <Button type="button" variant="secondary" onClick={handleAdd}>
+          + Add
+        </Button>
+      </div>
+
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((id) => {
+            const service = services.find((s) => s.id === id)
+            return (
+              <span
+                key={id}
+                className="flex items-center gap-1.5 rounded-full bg-accent-tint py-1 pl-3 pr-1.5 text-[12px] font-medium text-accent-deep"
+              >
+                {service?.name ?? 'Unknown service'}
+                <button
+                  type="button"
+                  onClick={() => onChange(value.filter((v) => v !== id))}
+                  aria-label={`Remove ${service?.name ?? 'service'}`}
+                  className="flex items-center justify-center rounded-full p-0.5 text-accent-deep transition-colors hover:bg-white/60"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   patient: Patient
   data: PatientClinicalData
@@ -130,21 +187,23 @@ export function ConsultationsTab({ patient, data, onChange }: Props) {
   async function handleAdd(input: {
     doctorId: string
     findings: string
-    recommendedServiceId: string
+    recommendedServiceIds: string[]
+    recommendationNote?: string
     prescriptionNote?: string
-    paymentStatus: 'paid' | 'unpaid'
-    paymentMode?: PaymentMode
   }) {
     setSubmitting(true)
     try {
+      // Billing (payment status/mode) isn't decided here — doctors log the
+      // clinical record, billing is handled separately on its own track.
+      // Every consultation starts unpaid; reception settles it later.
       const consultation = await addConsultation(patient.id, {
         doctorId: input.doctorId,
         consultDate: today(),
         fee: CONSULTATION_FEE,
         findings: input.findings,
-        paymentStatus: input.paymentStatus,
-        paymentMode: input.paymentMode,
-        recommendedServiceId: input.recommendedServiceId,
+        paymentStatus: 'unpaid',
+        recommendedServiceIds: input.recommendedServiceIds,
+        recommendationNote: input.recommendationNote,
       })
       if (input.prescriptionNote) {
         await addPrescription({ patientId: patient.id, consultationId: consultation.id, notes: input.prescriptionNote })
@@ -195,52 +254,50 @@ function NewConsultationForm({
   onSubmit: (input: {
     doctorId: string
     findings: string
-    recommendedServiceId: string
+    recommendedServiceIds: string[]
+    recommendationNote?: string
     prescriptionNote?: string
-    paymentStatus: 'paid' | 'unpaid'
-    paymentMode?: PaymentMode
   }) => void
   submitting: boolean
 }) {
   const [doctorId, setDoctorId] = useState(doctors[0].id)
   const [findings, setFindings] = useState('')
-  const [recommendedServiceId, setRecommendedServiceId] = useState(services[0].id)
+  const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>([])
+  const [recommendationNote, setRecommendationNote] = useState('')
   const [prescriptionNote, setPrescriptionNote] = useState('')
-  const [paidNow, setPaidNow] = useState(true)
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
 
   function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
     onSubmit({
       doctorId,
       findings,
-      recommendedServiceId,
+      recommendedServiceIds,
+      recommendationNote: recommendationNote || undefined,
       prescriptionNote: prescriptionNote || undefined,
-      paymentStatus: paidNow ? 'paid' : 'unpaid',
-      paymentMode: paidNow ? paymentMode : undefined,
     })
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5 rounded-xl border border-rule bg-white p-5 shadow-sm">
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <SelectField
-          label="Consulting doctor"
-          required
-          options={doctors.map((d) => d.name)}
-          value={doctors.find((d) => d.id === doctorId)?.name}
-          onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
-        />
-        <CategorizedServicePicker
-          label="Recommended treatment"
-          required
-          services={services}
-          value={recommendedServiceId}
-          onChange={setRecommendedServiceId}
-        />
-      </div>
+      <SelectField
+        label="Consulting doctor"
+        required
+        options={doctors.map((d) => d.name)}
+        value={doctors.find((d) => d.id === doctorId)?.name}
+        onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
+      />
 
       <TextareaField label="Findings" required value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="What the exam found" />
+
+      <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
+
+      <TextareaField
+        label="Additional recommendation"
+        hint="optional — for anything not in the service catalog"
+        value={recommendationNote}
+        onChange={(e) => setRecommendationNote(e.target.value)}
+        placeholder="e.g. Refer to orthodontist for bite evaluation"
+      />
 
       <TextareaField
         label="Prescription"
@@ -249,22 +306,6 @@ function NewConsultationForm({
         onChange={(e) => setPrescriptionNote(e.target.value)}
         placeholder="e.g. Ibuprofen 400mg, as needed for pain"
       />
-
-      <div className="flex flex-wrap items-end gap-5 border-t border-rule pt-4">
-        <label className="flex items-center gap-2 text-body text-ink">
-          <input type="checkbox" checked={paidNow} onChange={(e) => setPaidNow(e.target.checked)} className="h-4 w-4 accent-accent" />
-          Consultation fee ({formatINR(CONSULTATION_FEE)}) paid now
-        </label>
-        {paidNow && (
-          <SelectField
-            label="Payment mode"
-            options={['cash', 'card', 'upi']}
-            value={paymentMode}
-            onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-            className="w-40"
-          />
-        )}
-      </div>
 
       <div>
         <Button type="submit" disabled={submitting}>
@@ -284,24 +325,8 @@ function ConsultationCard({
   treatment: Treatment | undefined
   onChange: () => void
 }) {
-  const { doctors, services, doctorName, startTreatment } = useClinic()
-  const [formOpen, setFormOpen] = useState(false)
+  const { doctors, services, doctorName } = useClinic()
   const [editOpen, setEditOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [serviceId, setServiceId] = useState(consultation.recommendedServiceId ?? services[0]?.id)
-  const [doctorId, setDoctorId] = useState(doctors[0]?.id)
-
-  async function handleStart(e: SubmitEvent) {
-    e.preventDefault()
-    setSubmitting(true)
-    try {
-      await startTreatment(consultation.id, { serviceId, doctorId, startedAt: today() })
-      setFormOpen(false)
-      onChange()
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
@@ -341,35 +366,9 @@ function ConsultationCard({
               Treatment started — see <span className="font-medium text-ink">Treatments</span> tab.
             </p>
           ) : (
-            <div className="border-t border-rule pt-3">
-              {!formOpen && (
-                <Button variant="secondary" onClick={() => setFormOpen(true)}>
-                  Start treatment
-                </Button>
-              )}
-              {formOpen && (
-                <form onSubmit={handleStart} className="flex flex-col gap-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <CategorizedServicePicker label="Service" required services={services} value={serviceId} onChange={setServiceId} />
-                    <SelectField
-                      label="Assigned doctor"
-                      required
-                      options={doctors.map((d) => d.name)}
-                      value={doctors.find((d) => d.id === doctorId)?.name}
-                      onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
-                    />
-                  </div>
-                  <div className="flex gap-3">
-                    <Button type="submit" disabled={submitting}>
-                      {submitting ? 'Starting…' : 'Start treatment'}
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </div>
+            <p className="border-t border-rule pt-3 text-[13px] text-ink-soft">
+              No treatment started yet — start one from the <span className="font-medium text-ink">Treatments</span> tab.
+            </p>
           )}
         </>
       )}
@@ -394,10 +393,8 @@ function EditConsultationForm({
   const [doctorId, setDoctorId] = useState(consultation.doctorId)
   const [consultDate, setConsultDate] = useState(consultation.consultDate)
   const [findings, setFindings] = useState(consultation.findings)
-  const [recommendedServiceId, setRecommendedServiceId] = useState(consultation.recommendedServiceId ?? services[0]?.id)
-  const [fee, setFee] = useState(String(consultation.fee))
-  const [paid, setPaid] = useState(consultation.paymentStatus === 'paid')
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>(consultation.paymentMode ?? 'cash')
+  const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>(consultation.recommendedServiceIds)
+  const [recommendationNote, setRecommendationNote] = useState(consultation.recommendationNote ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -406,14 +403,17 @@ function EditConsultationForm({
     setSubmitting(true)
     setError(null)
     try {
+      // Billing fields aren't editable here — carried forward unchanged.
+      // Payment status/mode live on a separate billing track now.
       await updateConsultation(consultation.patientId, consultation.id, {
         doctorId,
         consultDate,
-        fee: Number(fee),
+        fee: consultation.fee,
         findings,
-        paymentStatus: paid ? 'paid' : 'unpaid',
-        paymentMode: paid ? paymentMode : undefined,
-        recommendedServiceId,
+        paymentStatus: consultation.paymentStatus,
+        paymentMode: consultation.paymentMode,
+        recommendedServiceIds,
+        recommendationNote: recommendationNote || undefined,
       })
       onSaved()
     } catch (err) {
@@ -438,32 +438,17 @@ function EditConsultationForm({
         <Field label="Consultation date" required type="date" value={consultDate} onChange={(e) => setConsultDate(e.target.value)} max={today()} />
       </div>
 
-      <CategorizedServicePicker
-        label="Recommended treatment"
-        required
-        services={services}
-        value={recommendedServiceId}
-        onChange={setRecommendedServiceId}
+      <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
+
+      <TextareaField
+        label="Additional recommendation"
+        hint="optional — for anything not in the service catalog"
+        value={recommendationNote}
+        onChange={(e) => setRecommendationNote(e.target.value)}
+        placeholder="e.g. Refer to orthodontist for bite evaluation"
       />
 
       <TextareaField label="Findings" required value={findings} onChange={(e) => setFindings(e.target.value)} />
-
-      <div className="flex flex-wrap items-end gap-5 border-t border-rule pt-4">
-        <Field label="Fee" required type="number" min="0" value={fee} onChange={(e) => setFee(e.target.value)} className="w-32" />
-        <label className="flex items-center gap-2 text-body text-ink">
-          <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} className="h-4 w-4 accent-accent" />
-          Paid
-        </label>
-        {paid && (
-          <SelectField
-            label="Payment mode"
-            options={['cash', 'card', 'upi']}
-            value={paymentMode}
-            onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-            className="w-40"
-          />
-        )}
-      </div>
 
       {error && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{error}</p>}
 

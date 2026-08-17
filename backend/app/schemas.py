@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
-from app.models import PaymentMode, PaymentStatus, StaffRole, TreatmentStatus
+from app.models import PaymentMode, PaymentStatus, ServiceType, StaffRole, TreatmentStatus
 
 # ---- Staff / auth ----
 
@@ -85,6 +85,7 @@ class PatientOut(BaseModel):
 class ServiceCreate(BaseModel):
     name: str
     category: str | None = None
+    service_type: ServiceType = ServiceType.dental
     listed_price: float
     active: bool = True
 
@@ -94,6 +95,7 @@ class ServiceOut(BaseModel):
     id: uuid.UUID
     name: str
     category: str | None
+    service_type: ServiceType
     listed_price: float
     active: bool
 
@@ -108,7 +110,8 @@ class ConsultationCreate(BaseModel):
     findings: str
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None = None
-    recommended_service_id: uuid.UUID | None = None
+    recommended_service_ids: list[uuid.UUID] = []
+    recommendation_note: str | None = None
 
 
 class ConsultationOut(BaseModel):
@@ -121,8 +124,14 @@ class ConsultationOut(BaseModel):
     findings: str
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None
-    recommended_service_id: uuid.UUID | None
+    paid_at: datetime | None
+    recommended_service_ids: list[uuid.UUID]
+    recommendation_note: str | None
     updated_at: datetime
+
+
+class RecordConsultationPaymentRequest(BaseModel):
+    payment_mode: PaymentMode
 
 
 # ---- Treatment ----
@@ -145,6 +154,59 @@ class TreatmentOut(BaseModel):
     status: TreatmentStatus
     started_at: date
     completed_at: date | None
+    discount_type: Literal["percent", "amount"] | None
+    discount_value: float | None
+
+
+class TreatmentDiscountUpdate(BaseModel):
+    discount_type: Literal["percent", "amount"] | None = None
+    discount_value: float | None = None
+
+    @model_validator(mode="after")
+    def _validate_discount(self) -> "TreatmentDiscountUpdate":
+        if self.discount_type is not None and self.discount_value is None:
+            raise ValueError("discount_value is required when discount_type is set.")
+        if self.discount_value is not None:
+            if self.discount_value < 0:
+                raise ValueError("Discount can't be negative.")
+            if self.discount_type == "percent" and self.discount_value > 100:
+                raise ValueError("A percentage discount can't exceed 100.")
+        return self
+
+
+class TreatmentPaymentCreate(BaseModel):
+    amount: float
+    payment_mode: PaymentMode
+
+    @model_validator(mode="after")
+    def _validate_amount(self) -> "TreatmentPaymentCreate":
+        if self.amount <= 0:
+            raise ValueError("Payment amount must be greater than zero.")
+        return self
+
+
+class TreatmentPaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    treatment_id: uuid.UUID
+    amount: float
+    payment_mode: PaymentMode
+    paid_at: datetime
+    recorded_by: uuid.UUID
+
+
+class TreatmentBillingOut(BaseModel):
+    """Computed billing summary for a treatment — charge comes from the
+    service's listed price (looked up, not stored), reduced by the
+    treatment's discount and whatever's been paid so far."""
+
+    service_price: float
+    discount_type: Literal["percent", "amount"] | None
+    discount_value: float | None
+    discount_amount: float
+    amount_paid: float
+    amount_pending: float
+    payments: list[TreatmentPaymentOut]
 
 
 class TreatmentHandoffCreate(BaseModel):
@@ -168,7 +230,10 @@ class TreatmentHandoffOut(BaseModel):
 
 class VisitCreate(BaseModel):
     visit_date: date
-    listed_price: float
+    # No longer collected from doctors — a treatment is billed once, as a
+    # whole, not per visit. Left optional rather than removed, so nothing
+    # breaks if it's ever sent.
+    listed_price: float | None = None
     discounted_price: float | None = None
     payment_status: PaymentStatus = PaymentStatus.unpaid
     payment_mode: PaymentMode | None = None
@@ -184,7 +249,7 @@ class VisitOut(BaseModel):
     id: uuid.UUID
     treatment_id: uuid.UUID
     visit_date: date
-    listed_price: float
+    listed_price: float | None
     discounted_price: float | None
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None

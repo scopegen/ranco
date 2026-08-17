@@ -2,6 +2,7 @@ export type PaymentMode = 'cash' | 'card' | 'upi'
 export type PaymentStatus = 'paid' | 'unpaid'
 export type StaffRole = 'admin' | 'doctor'
 export type TreatmentStatus = 'ongoing' | 'finished'
+export type ServiceType = 'dental' | 'lab'
 
 export const CONSULTATION_FEE = 500
 export const PAYMENT_MODES: PaymentMode[] = ['cash', 'card', 'upi']
@@ -18,6 +19,7 @@ export interface Service {
   id: string
   name: string
   category: string | null
+  serviceType: ServiceType
   listedPrice: number
   active: boolean
 }
@@ -31,7 +33,9 @@ export interface Consultation {
   findings: string
   paymentStatus: PaymentStatus
   paymentMode?: PaymentMode
-  recommendedServiceId?: string
+  paidAt?: string
+  recommendedServiceIds: string[]
+  recommendationNote?: string
   updatedAt: string
 }
 
@@ -44,6 +48,29 @@ export interface Treatment {
   status: TreatmentStatus
   startedAt: string
   completedAt?: string
+  discountType?: 'percent' | 'amount' | null
+  discountValue?: number | null
+}
+
+export interface TreatmentPayment {
+  id: string
+  treatmentId: string
+  amount: number
+  paymentMode: PaymentMode
+  paidAt: string
+  recordedBy: string
+}
+
+// Computed on the backend from the treatment's service price, its discount,
+// and the sum of its TreatmentPayment rows — not stored directly.
+export interface TreatmentBilling {
+  servicePrice: number
+  discountType: 'percent' | 'amount' | null
+  discountValue: number | null
+  discountAmount: number
+  amountPaid: number
+  amountPending: number
+  payments: TreatmentPayment[]
 }
 
 export interface TreatmentHandoff {
@@ -60,7 +87,10 @@ export interface Visit {
   id: string
   treatmentId: string
   visitDate: string
-  listedPrice: number
+  // Visits no longer carry pricing — a treatment is billed once, as a whole
+  // (see TreatmentBilling/TreatmentPayment). Kept optional only so old
+  // records (from before this change) still render correctly.
+  listedPrice?: number
   discountedPrice?: number
   paymentStatus: PaymentStatus
   paymentMode?: PaymentMode
@@ -104,5 +134,5 @@ export interface PrescriptionEntry {
 }
 
 export function visitAmount(visit: Visit): number {
-  return visit.discountedPrice ?? visit.listedPrice
+  return visit.discountedPrice ?? visit.listedPrice ?? 0
 }

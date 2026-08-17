@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Package, Receipt, Stethoscope, Users } from 'lucide-react'
+import { LogOut, Package, Receipt, Stethoscope, UserCog, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../state/AuthContext'
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/admin/treatments', label: 'Treatments', icon: Stethoscope, adminOnly: false },
   { to: '/admin/billing', label: 'Billing', icon: Receipt, adminOnly: true },
   { to: '/admin/services', label: 'Services', icon: Package, adminOnly: true },
+  { to: '/admin/doctors', label: 'Doctors', icon: UserCog, adminOnly: true },
 ]
 
 // Matches /admin/patients/<id> but not /admin/patients/new or the /edit

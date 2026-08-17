@@ -5,7 +5,7 @@ import { formatINR } from '../../lib/currency'
 import { Button } from '../../components/Button'
 import { Field, SelectField } from '../../components/Field'
 import { Pill } from '../../components/Pill'
-import type { Service } from '../../types/clinical'
+import type { Service, ServiceType } from '../../types/clinical'
 
 const UNCATEGORIZED = 'General'
 
@@ -88,7 +88,10 @@ function ServiceRow({
   service: Service
   editable: boolean
   existingCategories: string[]
-  onSave: (id: string, input: { name: string; category?: string | null; listedPrice: number; active: boolean }) => Promise<Service>
+  onSave: (
+    id: string,
+    input: { name: string; category?: string | null; serviceType: ServiceType; listedPrice: number; active: boolean },
+  ) => Promise<Service>
 }) {
   const [editing, setEditing] = useState(false)
 
@@ -110,7 +113,9 @@ function ServiceRow({
     <div className="flex items-center justify-between gap-3 rounded-lg border border-rule bg-white px-4 py-3 shadow-sm">
       <div className="flex flex-col gap-0.5">
         <span className="text-body font-medium text-ink">{service.name}</span>
-        <span className="text-[12px] text-ink-faint">{formatINR(service.listedPrice)}</span>
+        <span className="text-[12px] text-ink-faint">
+          {formatINR(service.listedPrice)} &middot; {service.serviceType === 'lab' ? 'Lab' : 'Dental'}
+        </span>
       </div>
       <div className="flex items-center gap-3">
         {service.active ? <Pill variant="solid">Active</Pill> : <Pill variant="outline">Inactive</Pill>}
@@ -135,12 +140,19 @@ function ServiceForm({
 }: {
   initial?: Service
   existingCategories: string[]
-  onSubmit: (input: { name: string; category?: string | null; listedPrice: number; active: boolean }) => Promise<void>
+  onSubmit: (input: {
+    name: string
+    category?: string | null
+    serviceType: ServiceType
+    listedPrice: number
+    active: boolean
+  }) => Promise<void>
   onCancel: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [categoryChoice, setCategoryChoice] = useState(initial?.category ?? NO_CATEGORY)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [serviceTypeLabel, setServiceTypeLabel] = useState(initial?.serviceType === 'lab' ? 'Lab' : 'Dental')
   const [price, setPrice] = useState(initial ? String(initial.listedPrice) : '')
   const [active, setActive] = useState(initial?.active ?? true)
   const [submitting, setSubmitting] = useState(false)
@@ -153,7 +165,8 @@ function ServiceForm({
     try {
       const category =
         categoryChoice === NO_CATEGORY ? null : categoryChoice === NEW_CATEGORY ? newCategoryName.trim() || null : categoryChoice
-      await onSubmit({ name, category, listedPrice: Number(price), active })
+      const serviceType: ServiceType = serviceTypeLabel === 'Lab' ? 'lab' : 'dental'
+      await onSubmit({ name, category, serviceType, listedPrice: Number(price), active })
     } finally {
       setSubmitting(false)
     }
@@ -180,7 +193,16 @@ function ServiceForm({
           placeholder="e.g. Dental Bridges"
         />
       )}
-      <Field label="Price" required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="8000" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <SelectField
+          label="Type"
+          hint="performed in-clinic, or fulfilled by an external lab"
+          options={['Dental', 'Lab']}
+          value={serviceTypeLabel}
+          onChange={(e) => setServiceTypeLabel(e.target.value)}
+        />
+        <Field label="Price" required type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="8000" />
+      </div>
       <label className="flex items-center gap-2 text-body text-ink">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 accent-accent" />
         Active — shown when starting a treatment

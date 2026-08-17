@@ -8,8 +8,10 @@ import type {
   PaymentStatus,
   PrescriptionEntry,
   Service,
+  ServiceType,
   Staff,
   Treatment,
+  TreatmentBilling,
   Visit,
 } from '../types/clinical'
 
@@ -25,6 +27,8 @@ interface ClinicContextValue {
   doctorName: (id: string | undefined) => string
   serviceName: (id: string | undefined) => string
 
+  addDoctor: (input: { name: string; specialty?: string; email: string; password: string }) => Promise<Staff>
+
   addConsultation: (
     patientId: string,
     input: {
@@ -34,7 +38,8 @@ interface ClinicContextValue {
       findings: string
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
-      recommendedServiceId?: string
+      recommendedServiceIds: string[]
+      recommendationNote?: string
     },
   ) => Promise<Consultation>
   updateConsultation: (
@@ -47,8 +52,14 @@ interface ClinicContextValue {
       findings: string
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
-      recommendedServiceId?: string
+      recommendedServiceIds: string[]
+      recommendationNote?: string
     },
+  ) => Promise<Consultation>
+  recordConsultationPayment: (
+    patientId: string,
+    consultationId: string,
+    paymentMode: PaymentMode,
   ) => Promise<Consultation>
 
   startTreatment: (
@@ -56,15 +67,17 @@ interface ClinicContextValue {
     input: { serviceId: string; doctorId: string; startedAt: string },
   ) => Promise<Treatment>
 
-  logVisit: (
+  logVisit: (treatmentId: string, input: { visitDate: string }) => Promise<Visit>
+
+  getTreatmentBilling: (treatmentId: string) => Promise<TreatmentBilling>
+  updateTreatmentDiscount: (
     treatmentId: string,
-    input: {
-      visitDate: string
-      listedPrice: number
-      paymentStatus: PaymentStatus
-      paymentMode?: PaymentMode
-    },
-  ) => Promise<Visit>
+    discount: { type: 'percent' | 'amount'; value: number } | null,
+  ) => Promise<TreatmentBilling>
+  addTreatmentPayment: (
+    treatmentId: string,
+    input: { amount: number; paymentMode: PaymentMode },
+  ) => Promise<TreatmentBilling>
 
   generateInvoice: (
     treatmentId: string,
@@ -88,10 +101,12 @@ interface ClinicContextValue {
     input: { diagnosis?: string; notes: string; advice?: string; nextVisit?: string },
   ) => Promise<PrescriptionEntry>
 
-  addService: (input: { name: string; category?: string | null; listedPrice: number; active: boolean }) => Promise<Service>
+  addService: (
+    input: { name: string; category?: string | null; serviceType: ServiceType; listedPrice: number; active: boolean },
+  ) => Promise<Service>
   updateService: (
     id: string,
-    input: { name: string; category?: string | null; listedPrice: number; active: boolean },
+    input: { name: string; category?: string | null; serviceType: ServiceType; listedPrice: number; active: boolean },
   ) => Promise<Service>
 
   viewPrescriptionsPdf: (patientId: string) => Promise<void>
@@ -122,6 +137,12 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   const doctorName = (id: string | undefined) => doctors.find((d) => d.id === id)?.name ?? '—'
   const serviceName = (id: string | undefined) => services.find((s) => s.id === id)?.name ?? '—'
 
+  async function addDoctor(input: { name: string; specialty?: string; email: string; password: string }) {
+    const created = await clinicalApi.createStaff({ ...input, role: 'doctor' })
+    setDoctors((prev) => [...prev, created])
+    return created
+  }
+
   async function addConsultation(
     patientId: string,
     input: {
@@ -131,7 +152,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       findings: string
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
-      recommendedServiceId?: string
+      recommendedServiceIds: string[]
+      recommendationNote?: string
     },
   ) {
     return clinicalApi.createConsultation(patientId, {
@@ -141,7 +163,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       findings: input.findings,
       payment_status: input.paymentStatus,
       payment_mode: input.paymentMode,
-      recommended_service_id: input.recommendedServiceId,
+      recommended_service_ids: input.recommendedServiceIds,
+      recommendation_note: input.recommendationNote,
     })
   }
 
@@ -155,7 +178,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       findings: string
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
-      recommendedServiceId?: string
+      recommendedServiceIds: string[]
+      recommendationNote?: string
     },
   ) {
     return clinicalApi.updateConsultation(patientId, consultationId, {
@@ -165,8 +189,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       findings: input.findings,
       payment_status: input.paymentStatus,
       payment_mode: input.paymentMode,
-      recommended_service_id: input.recommendedServiceId,
+      recommended_service_ids: input.recommendedServiceIds,
+      recommendation_note: input.recommendationNote,
     })
+  }
+
+  async function recordConsultationPayment(patientId: string, consultationId: string, paymentMode: PaymentMode) {
+    return clinicalApi.recordConsultationPayment(patientId, consultationId, { payment_mode: paymentMode })
   }
 
   async function startTreatment(
@@ -181,16 +210,26 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  async function logVisit(
+  async function logVisit(treatmentId: string, input: { visitDate: string }) {
+    return clinicalApi.logVisit(treatmentId, { visit_date: input.visitDate })
+  }
+
+  async function getTreatmentBilling(treatmentId: string) {
+    return clinicalApi.getTreatmentBilling(treatmentId)
+  }
+
+  async function updateTreatmentDiscount(
     treatmentId: string,
-    input: { visitDate: string; listedPrice: number; paymentStatus: PaymentStatus; paymentMode?: PaymentMode },
+    discount: { type: 'percent' | 'amount'; value: number } | null,
   ) {
-    return clinicalApi.logVisit(treatmentId, {
-      visit_date: input.visitDate,
-      listed_price: input.listedPrice,
-      payment_status: input.paymentStatus,
-      payment_mode: input.paymentMode,
+    return clinicalApi.updateTreatmentDiscount(treatmentId, {
+      discount_type: discount?.type ?? null,
+      discount_value: discount?.value ?? null,
     })
+  }
+
+  async function addTreatmentPayment(treatmentId: string, input: { amount: number; paymentMode: PaymentMode }) {
+    return clinicalApi.createTreatmentPayment(treatmentId, { amount: input.amount, payment_mode: input.paymentMode })
   }
 
   async function generateInvoice(
@@ -233,10 +272,17 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  async function addService(input: { name: string; category?: string | null; listedPrice: number; active: boolean }) {
+  async function addService(input: {
+    name: string
+    category?: string | null
+    serviceType: ServiceType
+    listedPrice: number
+    active: boolean
+  }) {
     const created = await clinicalApi.createService({
       name: input.name,
       category: input.category ?? undefined,
+      service_type: input.serviceType,
       listed_price: input.listedPrice,
       active: input.active,
     })
@@ -246,11 +292,12 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
 
   async function updateService(
     id: string,
-    input: { name: string; category?: string | null; listedPrice: number; active: boolean },
+    input: { name: string; category?: string | null; serviceType: ServiceType; listedPrice: number; active: boolean },
   ) {
     const updated = await clinicalApi.updateService(id, {
       name: input.name,
       category: input.category ?? undefined,
+      service_type: input.serviceType,
       listed_price: input.listedPrice,
       active: input.active,
     })
@@ -266,10 +313,15 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         loading,
         doctorName,
         serviceName,
+        addDoctor,
         addConsultation,
         updateConsultation,
+        recordConsultationPayment,
         startTreatment,
         logVisit,
+        getTreatmentBilling,
+        updateTreatmentDiscount,
+        addTreatmentPayment,
         generateInvoice,
         addPrescription,
         editPrescription,
