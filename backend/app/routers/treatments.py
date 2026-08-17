@@ -36,9 +36,19 @@ def start_treatment(
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
 
-    existing = db.scalar(select(Treatment).where(Treatment.consultation_id == consultation_id))
+    # A consultation can recommend several services, each becoming its own
+    # treatment — only block starting a second treatment for the exact same
+    # service under the same consultation.
+    existing = db.scalar(
+        select(Treatment).where(
+            Treatment.consultation_id == consultation_id,
+            Treatment.service_id == payload.service_id,
+        )
+    )
     if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This consultation already has a treatment")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="This consultation already has a treatment for that service"
+        )
 
     treatment = Treatment(
         patient_id=consultation.patient_id,

@@ -17,22 +17,51 @@ interface Props {
   onChange: () => void
 }
 
+interface PendingItem {
+  consultation: Consultation
+  // The specific recommended service this prompt is for — undefined for a
+  // consultation that recommended nothing (falls back to "start one
+  // treatment, any service", the old single-treatment behaviour).
+  serviceId?: string
+}
+
 export function TreatmentsTab({ patient, data, onChange }: Props) {
   // A consultation moves here, as an actionable "start treatment" prompt,
   // the moment it's saved — the doctor no longer starts a treatment from
-  // inside the consultation itself.
-  const pendingConsultations = data.consultations
-    .filter((c) => !data.treatments.some((t) => t.consultationId === c.id))
-    .sort((a, b) => b.consultDate.localeCompare(a.consultDate))
+  // inside the consultation itself. A consultation can recommend several
+  // services; each one that doesn't have a treatment yet gets its own
+  // prompt, independent of the others, so starting one doesn't hide the
+  // rest.
+  const pendingItems: PendingItem[] = []
+  for (const consultation of data.consultations) {
+    const startedServiceIds = new Set(
+      data.treatments.filter((t) => t.consultationId === consultation.id).map((t) => t.serviceId),
+    )
+    if (consultation.recommendedServiceIds.length > 0) {
+      for (const serviceId of consultation.recommendedServiceIds) {
+        if (!startedServiceIds.has(serviceId)) {
+          pendingItems.push({ consultation, serviceId })
+        }
+      }
+    } else if (startedServiceIds.size === 0) {
+      pendingItems.push({ consultation })
+    }
+  }
+  pendingItems.sort((a, b) => b.consultation.consultDate.localeCompare(a.consultation.consultDate))
 
-  if (data.treatments.length === 0 && pendingConsultations.length === 0) {
+  if (data.treatments.length === 0 && pendingItems.length === 0) {
     return <p className="text-ink-soft">No consultations yet — add one from the Consultations tab.</p>
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {pendingConsultations.map((consultation) => (
-        <StartTreatmentCard key={consultation.id} consultation={consultation} onChange={onChange} />
+      {pendingItems.map((item) => (
+        <StartTreatmentCard
+          key={`${item.consultation.id}-${item.serviceId ?? 'none'}`}
+          consultation={item.consultation}
+          recommendedServiceId={item.serviceId}
+          onChange={onChange}
+        />
       ))}
       {data.treatments.map((treatment) => (
         <TreatmentCard
@@ -47,32 +76,42 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
   )
 }
 
-function StartTreatmentCard({ consultation, onChange }: { consultation: Consultation; onChange: () => void }) {
+function StartTreatmentCard({
+  consultation,
+  recommendedServiceId,
+  onChange,
+}: {
+  consultation: Consultation
+  recommendedServiceId?: string
+  onChange: () => void
+}) {
   const { doctors, services, doctorName, serviceName, startTreatment } = useClinic()
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [serviceId, setServiceId] = useState(consultation.recommendedServiceIds[0] ?? services[0]?.id)
+  const [serviceId, setServiceId] = useState(recommendedServiceId ?? services[0]?.id)
   const [doctorId, setDoctorId] = useState(consultation.doctorId ?? doctors[0]?.id)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
     setSubmitting(true)
+    setError(null)
     try {
       await startTreatment(consultation.id, { serviceId, doctorId, startedAt: today() })
       onChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start treatment')
     } finally {
       setSubmitting(false)
     }
   }
-
-  const recommendedNames = consultation.recommendedServiceIds.map((id) => serviceName(id))
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-subheading font-medium text-ink">
-            {recommendedNames.length > 0 ? recommendedNames.join(', ') : 'Consultation'}
+            {recommendedServiceId ? serviceName(recommendedServiceId) : 'Consultation'}
           </p>
           <p className="text-[12px] text-ink-faint">
             {doctorName(consultation.doctorId)} &middot; consulted {formatDate(consultation.consultDate)}
@@ -102,6 +141,7 @@ function StartTreatmentCard({ consultation, onChange }: { consultation: Consulta
               onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
             />
           </div>
+          {error && <p className="text-[13px] text-crit">{error}</p>}
           <div className="flex gap-3">
             <Button type="submit" disabled={submitting}>
               {submitting ? 'Starting…' : 'Start treatment'}
