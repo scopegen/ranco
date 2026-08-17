@@ -119,9 +119,13 @@ interface RawVisit {
   paid_at: string | null
 }
 
+interface RawInvoiceLine {
+  treatment_id: string
+  amount: number
+}
+
 interface RawInvoice {
   id: string
-  treatment_id: string
   listed_total: number
   discount_type: 'percent' | 'amount' | null
   discount_value: number | null
@@ -130,6 +134,7 @@ interface RawInvoice {
   payment_mode: PaymentMode
   issued_at: string
   issued_by: string
+  lines: RawInvoiceLine[]
 }
 
 interface RawPrescriptionVersion {
@@ -259,7 +264,6 @@ const toVisit = (r: RawVisit): Visit => ({
 
 const toInvoice = (r: RawInvoice): Invoice => ({
   id: r.id,
-  treatmentId: r.treatment_id,
   listedTotal: r.listed_total,
   discountType: r.discount_type,
   discountValue: r.discount_value,
@@ -268,6 +272,7 @@ const toInvoice = (r: RawInvoice): Invoice => ({
   paymentMode: r.payment_mode,
   issuedAt: r.issued_at,
   issuedBy: r.issued_by,
+  lines: r.lines.map((l) => ({ treatmentId: l.treatment_id, amount: l.amount })),
 })
 
 const toPrescriptionEntry = (r: RawPrescriptionEntry): PrescriptionEntry => ({
@@ -400,22 +405,24 @@ export const clinicalApi = {
   logVisit: (treatmentId: string, input: { visit_date: string }) =>
     api.post<RawVisit>(`/treatments/${treatmentId}/visits`, input).then(toVisit),
 
-  // invoices
+  // invoices — one invoice can cover several treatments picked together
   generateInvoice: (
-    treatmentId: string,
+    patientId: string,
+    treatmentIds: string[],
     paymentMode: PaymentMode | null,
     discount?: { type: 'percent' | 'amount'; value: number } | null,
   ) =>
     api
-      .post<RawInvoice>(`/treatments/${treatmentId}/generate-invoice`, {
+      .post<RawInvoice>(`/patients/${patientId}/invoices`, {
+        treatment_ids: treatmentIds,
         payment_mode: paymentMode,
         discount_type: discount?.type,
         discount_value: discount?.value,
       })
       .then(toInvoice),
-  getInvoice: (treatmentId: string) =>
-    api.get<RawInvoice | null>(`/treatments/${treatmentId}/invoice`).then((r) => (r ? toInvoice(r) : undefined)),
-  viewInvoicePdf: (treatmentId: string) => viewPdf(`/treatments/${treatmentId}/invoice/pdf`),
+  listInvoices: (patientId: string) =>
+    api.get<RawInvoice[]>(`/patients/${patientId}/invoices`).then((rs) => rs.map(toInvoice)),
+  viewInvoicePdf: (invoiceId: string) => viewPdf(`/invoices/${invoiceId}/pdf`),
 
   // prescriptions
   listPrescriptionsForPatient: (patientId: string) =>

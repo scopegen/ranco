@@ -97,9 +97,14 @@ export interface Visit {
   paidAt?: string
 }
 
+export interface InvoiceLine {
+  treatmentId: string
+  amount: number
+}
+
+// One invoice can cover several treatments picked together — see `lines`.
 export interface Invoice {
   id: string
-  treatmentId: string
   listedTotal: number
   discountType: 'percent' | 'amount' | null
   discountValue: number | null
@@ -108,6 +113,7 @@ export interface Invoice {
   paymentMode: PaymentMode
   issuedAt: string
   issuedBy: string
+  lines: InvoiceLine[]
 }
 
 export interface PrescriptionVersion {
@@ -131,8 +137,4 @@ export interface PrescriptionEntry {
   createdAt: string
   lastEditedAt?: string
   versions: PrescriptionVersion[]
-}
-
-export function visitAmount(visit: Visit): number {
-  return visit.discountedPrice ?? visit.listedPrice ?? 0
 }

@@ -245,10 +245,13 @@ class PrescriptionVersion(Base):
 
 
 class Invoice(Base):
+    """One invoice can cover several treatments at once (picked together in
+    the Billing tab) — see InvoiceLine below for which treatments and how
+    much of the total each contributed."""
+
     __tablename__ = "invoices"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    treatment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("treatments.id"), nullable=False)
     listed_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     # discount_type/discount_value are what the staff member actually entered
     # ("10" + percent, or "500" + amount) — kept alongside discount_total (the
@@ -261,3 +264,22 @@ class Invoice(Base):
     payment_mode: Mapped[PaymentMode] = mapped_column(Enum(PaymentMode, name="payment_mode"), nullable=False)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     issued_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
+
+    lines: Mapped[list["InvoiceLine"]] = relationship(back_populates="invoice")
+
+
+class InvoiceLine(Base):
+    """One treatment's contribution to an invoice — amount is that
+    treatment's pending balance at the moment the invoice was generated,
+    before the invoice's own discount is applied (the discount is spread
+    proportionally across lines when settling each treatment; see
+    routers/invoices.py). A treatment can appear on at most one invoice."""
+
+    __tablename__ = "invoice_lines"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"), nullable=False)
+    treatment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("treatments.id"), nullable=False, unique=True)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+
+    invoice: Mapped[Invoice] = relationship(back_populates="lines")

@@ -6,10 +6,12 @@ import { formatDate, formatDateTime } from '../../../lib/date'
 import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
 import { Button } from '../../../components/Button'
 import { Field, SelectField } from '../../../components/Field'
+import type { Patient } from '../../../state/PatientsContext'
 import type { Consultation, Invoice, PaymentMode, Treatment, TreatmentBilling } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 
 interface Props {
+  patient: Patient
   data: PatientClinicalData
   onChange: () => void
 }
@@ -17,7 +19,7 @@ interface Props {
 // This tab is admin-only (gated in PatientDetail) — doctors never reach any
 // of the payment-recording actions here; the backend also enforces that
 // independently via require_admin on every endpoint these call.
-export function BillingTab({ data, onChange }: Props) {
+export function BillingTab({ patient, data, onChange }: Props) {
   const { doctorName, serviceName } = useClinic()
 
   if (data.consultations.length === 0 && data.treatments.length === 0) {
@@ -39,6 +41,11 @@ export function BillingTab({ data, onChange }: Props) {
   }
   const outstanding = totalBilled - totalCollected
 
+  const invoiceByTreatmentId: Record<string, Invoice | undefined> = {}
+  for (const invoice of data.invoices) {
+    for (const line of invoice.lines) invoiceByTreatmentId[line.treatmentId] = invoice
+  }
+
   type Row =
     | { kind: 'consultation'; date: string; consultation: Consultation }
     | { kind: 'treatment'; date: string; treatment: Treatment }
@@ -56,6 +63,14 @@ export function BillingTab({ data, onChange }: Props) {
         <SummaryTile label="Outstanding" value={formatINR(outstanding)} />
       </div>
 
+      <GenerateInvoiceSection
+        patient={patient}
+        treatments={data.treatments}
+        billingByTreatment={data.billingByTreatment}
+        serviceName={serviceName}
+        onChange={onChange}
+      />
+
       <div className="flex flex-col gap-3">
         {rows.map((row) =>
           row.kind === 'consultation' ? (
@@ -70,13 +85,298 @@ export function BillingTab({ data, onChange }: Props) {
               key={row.treatment.id}
               treatment={row.treatment}
               billing={data.billingByTreatment[row.treatment.id]}
-              invoice={data.invoiceByTreatment[row.treatment.id]}
+              invoice={invoiceByTreatmentId[row.treatment.id]}
               serviceName={serviceName}
               onChange={onChange}
             />
           ),
         )}
       </div>
+
+      <InvoicesList invoices={data.invoices} treatments={data.treatments} serviceName={serviceName} />
+    </div>
+  )
+}
+
+function GenerateInvoiceSection({
+  patient,
+  treatments,
+  billingByTreatment,
+  serviceName,
+  onChange,
+}: {
+  patient: Patient
+  treatments: Treatment[]
+  billingByTreatment: Record<string, TreatmentBilling | undefined>
+  serviceName: (id: string | undefined) => string
+  onChange: () => void
+}) {
+  const { generateInvoice, viewInvoicePdf } = useClinic()
+  const invoiceable = treatments.filter(
+    (t) => t.status === 'ongoing' && (billingByTreatment[t.id]?.amountPending ?? 0) > 0,
+  )
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [mode, setMode] = useState<PaymentMode>('cash')
+  const [discountType, setDiscountType] = useState<'none' | 'percent' | 'amount'>('none')
+  const [discountValue, setDiscountValue] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [generated, setGenerated] = useState<Invoice | null>(null)
+  const [viewing, setViewing] = useState(false)
+
+  if (invoiceable.length === 0) return null
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const subtotal = [...selected].reduce((sum, id) => sum + (billingByTreatment[id]?.amountPending ?? 0), 0)
+  const discountAmount = (() => {
+    const value = Number(discountValue)
+    if (discountType === 'none' || !value || value <= 0) return 0
+    if (discountType === 'percent') return Math.min(subtotal * (Math.min(value, 100) / 100), subtotal)
+    return Math.min(value, subtotal)
+  })()
+  const payable = subtotal - discountAmount
+
+  async function handleGenerate() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const discount = discountType === 'none' || !discountValue ? null : { type: discountType, value: Number(discountValue) }
+      const invoice = await generateInvoice(patient.id, [...selected], mode, discount)
+      setGenerated(invoice)
+      setSelected(new Set())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate the invoice')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleView() {
+    if (!generated) return
+    setViewing(true)
+    try {
+      await viewInvoicePdf(generated.id)
+    } finally {
+      setViewing(false)
+    }
+  }
+
+  function handleDone() {
+    setGenerated(null)
+    setOpen(false)
+    onChange()
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-subheading font-medium text-ink">Generate invoice</p>
+        {!open && !generated && (
+          <Button variant="secondary" onClick={() => setOpen(true)}>
+            + Select treatments
+          </Button>
+        )}
+      </div>
+
+      {open && !generated && (
+        <div className="flex flex-col gap-4 rounded-lg bg-white p-4">
+          <div className="flex flex-col gap-2">
+            {invoiceable.map((t) => {
+              const billing = billingByTreatment[t.id]
+              return (
+                <label
+                  key={t.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-rule px-3.5 py-2.5"
+                >
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(t.id)}
+                      onChange={() => toggle(t.id)}
+                      className="h-4 w-4 accent-accent"
+                    />
+                    <span className="text-body text-ink">{serviceName(t.serviceId)}</span>
+                  </span>
+                  <span className="text-[13px] text-ink-soft">{formatINR(billing?.amountPending ?? 0)} pending</span>
+                </label>
+              )
+            })}
+          </div>
+
+          {selected.size > 0 && (
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <SelectField
+                  label="Payment mode"
+                  options={['cash', 'card', 'upi']}
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as PaymentMode)}
+                  className="w-32"
+                />
+                <SelectField
+                  label="Discount"
+                  options={['none', 'percent', 'amount']}
+                  value={discountType}
+                  onChange={(e) => {
+                    setDiscountType(e.target.value as typeof discountType)
+                    setDiscountValue('')
+                  }}
+                  className="w-32"
+                />
+                {discountType !== 'none' && (
+                  <Field
+                    label={discountType === 'percent' ? 'Percent off' : 'Amount off'}
+                    type="number"
+                    min="0"
+                    max={discountType === 'percent' ? '100' : undefined}
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    placeholder={discountType === 'percent' ? '10' : '500'}
+                    className="w-32"
+                  />
+                )}
+              </div>
+
+              <table className="w-fit text-body">
+                <tbody>
+                  <tr>
+                    <td className="pr-6 text-ink-soft">Total amount</td>
+                    <td className="text-right font-medium text-ink">{formatINR(subtotal)}</td>
+                  </tr>
+                  {discountAmount > 0 && (
+                    <tr>
+                      <td className="pr-6 text-ink-soft">Discount</td>
+                      <td className="text-right font-medium text-crit">&minus;{formatINR(discountAmount)}</td>
+                    </tr>
+                  )}
+                  <tr className="border-t border-rule">
+                    <td className="pr-6 pt-1 font-medium text-ink">Amount payable</td>
+                    <td className="pt-1 text-right text-subheading font-bold text-accent-deep">{formatINR(payable)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {error && <p className="text-[13px] text-crit">{error}</p>}
+
+              <div className="flex gap-3">
+                <Button onClick={handleGenerate} disabled={submitting}>
+                  {submitting ? 'Generating…' : `Generate invoice for ${formatINR(payable)}`}
+                </Button>
+                <Button variant="ghost" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </>
+          )}
+
+          {selected.size === 0 && (
+            <div className="flex gap-3">
+              <Button variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {generated && (
+        <div className="flex flex-col gap-4 rounded-lg bg-white p-4">
+          <p className="text-body text-ink">
+            Invoice generated — <span className="font-medium">{formatINR(generated.finalTotal)}</span> via{' '}
+            {generated.paymentMode.toUpperCase()}.
+          </p>
+          <div className="flex gap-3">
+            <Button onClick={handleView} disabled={viewing}>
+              {viewing ? 'Opening…' : 'View invoice'}
+            </Button>
+            <Button variant="ghost" onClick={handleDone}>
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InvoicesList({
+  invoices,
+  treatments,
+  serviceName,
+}: {
+  invoices: Invoice[]
+  treatments: Treatment[]
+  serviceName: (id: string | undefined) => string
+}) {
+  if (invoices.length === 0) return null
+
+  const sorted = [...invoices].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">Invoices ({invoices.length})</p>
+      {sorted.map((invoice) => (
+        <InvoiceRow key={invoice.id} invoice={invoice} treatments={treatments} serviceName={serviceName} />
+      ))}
+    </div>
+  )
+}
+
+function InvoiceRow({
+  invoice,
+  treatments,
+  serviceName,
+}: {
+  invoice: Invoice
+  treatments: Treatment[]
+  serviceName: (id: string | undefined) => string
+}) {
+  const { viewInvoicePdf } = useClinic()
+  const [viewing, setViewing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const labels = invoice.lines
+    .map((line) => serviceName(treatments.find((t) => t.id === line.treatmentId)?.serviceId))
+    .join(', ')
+
+  async function handleView() {
+    setViewing(true)
+    setError(null)
+    try {
+      await viewInvoicePdf(invoice.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open the invoice')
+    } finally {
+      setViewing(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-rule bg-white px-4 py-3 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-body font-medium text-ink">{labels || `${invoice.lines.length} treatment(s)`}</span>
+          <span className="text-[12px] text-ink-faint">
+            {formatDateTime(invoice.issuedAt)} &middot; {invoice.paymentMode.toUpperCase()}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-medium text-ink">{formatINR(invoice.finalTotal)}</span>
+          <Button variant="ghost" onClick={handleView} disabled={viewing}>
+            {viewing ? 'Opening…' : 'View'}
+          </Button>
+        </div>
+      </div>
+      {error && <p className="text-[13px] text-crit">{error}</p>}
     </div>
   )
 }

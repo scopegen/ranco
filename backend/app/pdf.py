@@ -282,9 +282,15 @@ def render_history_pdf(
     consultations: list,
     treatments: list,
     visits_by_treatment: dict,
-    invoices_by_treatment: dict,
+    treatment_billing_by_id: dict,
+    invoice_by_treatment: dict,
     prescriptions: list,
 ) -> bytes:
+    """treatment_billing_by_id: treatment_id -> TreatmentBillingOut (service
+    price/discount/paid/pending — the same numbers shown on the Billing tab).
+    invoice_by_treatment: treatment_id -> (Invoice, this treatment's line
+    amount on it), only present for treatments that have been invoiced."""
+
     def doctor_name(staff_id) -> str:
         s = staff_by_id.get(staff_id)
         return s.name if s else "Unknown"
@@ -318,21 +324,31 @@ def render_history_pdf(
     total_collected = 0.0
     for t in sorted(treatments, key=lambda t: t.started_at, reverse=True):
         visits = visits_by_treatment.get(t.id, [])
-        visit_rows = ""
-        for v in visits:
-            amount = float(v.discounted_price if v.discounted_price is not None else v.listed_price)
-            total_billed += amount
-            if v.payment_status.value == "paid":
-                total_collected += amount
-            visit_rows += f"""<tr>
-              <td>{v.visit_date.strftime('%d %b %Y')}</td>
-              <td>&#8377;{amount:,.0f}</td>
-              <td><span class="pill {'pill-paid' if v.payment_status.value == 'paid' else 'pill-unpaid'}">{v.payment_status.value}</span></td>
-            </tr>"""
-        invoice = invoices_by_treatment.get(t.id)
+        # Visits are an activity log only now — no per-visit price/status;
+        # a treatment is billed once, as a whole (see billing_html below).
+        visit_rows = "".join(f"<tr><td>{v.visit_date.strftime('%d %b %Y')}</td></tr>" for v in visits)
+
+        billing = treatment_billing_by_id.get(t.id)
+        billing_html = ""
+        if billing:
+            charge = billing.service_price - billing.discount_amount
+            total_billed += charge
+            total_collected += billing.amount_paid
+            billing_html = (
+                f'<p style="font-size:9.5pt;"><span class="label">Billing:</span> '
+                f"&#8377;{charge:,.0f} charged, &#8377;{billing.amount_paid:,.0f} paid, "
+                f"&#8377;{billing.amount_pending:,.0f} pending</p>"
+            )
+
+        invoice_line = invoice_by_treatment.get(t.id)
         invoice_html = ""
-        if invoice:
-            invoice_html = f'<p style="font-size:9.5pt;"><span class="label">Invoice:</span> &#8377;{invoice.final_total:,.0f} settled via {invoice.payment_mode.value.upper()} on {invoice.issued_at.strftime("%d %b %Y")}</p>'
+        if invoice_line:
+            invoice, line_amount = invoice_line
+            invoice_html = (
+                f'<p style="font-size:9.5pt;"><span class="label">Invoice:</span> '
+                f"&#8377;{line_amount:,.0f} settled via {invoice.payment_mode.value.upper()} "
+                f'on {invoice.issued_at.strftime("%d %b %Y")}</p>'
+            )
 
         treatment_blocks.append(f"""
         <div style="margin-bottom:14px;">
@@ -340,9 +356,10 @@ def render_history_pdf(
             <span style="font-weight:normal; font-size:9pt; color:{INK_SOFT};"> &mdash; {_esc(doctor_name(t.doctor_id))} &middot; {t.status.value} &middot; started {t.started_at.strftime('%d %b %Y')}{f" &middot; finished {t.completed_at.strftime('%d %b %Y')}" if t.completed_at else ""}</span>
           </p>
           <table class="rows">
-            <tr><th>Visit date</th><th>Amount</th><th>Status</th></tr>
-            {visit_rows or '<tr><td colspan="3">No visits logged.</td></tr>'}
+            <tr><th>Visit date</th></tr>
+            {visit_rows or '<tr><td>No visits logged.</td></tr>'}
           </table>
+          {billing_html}
           {invoice_html}
         </div>
         """)
@@ -399,14 +416,16 @@ def render_history_pdf(
     return _to_pdf(html)
 
 
-def render_invoice_pdf(patient, treatment, service_name: str, doctor_name: str, visits: list, invoice) -> bytes:
-    visit_rows = "".join(
+def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
+    """lines: [{'service_name': str, 'doctor_name': str, 'amount': float}, ...]
+    — one per treatment this invoice covers."""
+    line_rows = "".join(
         f"""<tr>
-          <td>{v.visit_date.strftime('%d %b %Y')}</td>
-          <td>&#8377;{float(v.discounted_price if v.discounted_price is not None else v.listed_price):,.0f}</td>
+          <td>{_esc(line['service_name'])}</td>
+          <td>Dr. {_esc(_display_doctor_name(line['doctor_name']))}</td>
+          <td>&#8377;{line['amount']:,.0f}</td>
         </tr>"""
-        for v in sorted(visits, key=lambda v: v.visit_date)
-        if v.payment_status.value == "paid" and v.paid_at is not None
+        for line in lines
     )
 
     if invoice.discount_type == "percent":
@@ -430,19 +449,15 @@ def render_invoice_pdf(patient, treatment, service_name: str, doctor_name: str, 
       {_patient_info_html(patient)}
       <table class="info">
         <tr>
-          <td width="50%"><span class="label">Treatment:</span> {_esc(service_name)}</td>
-          <td width="50%"><span class="label">Doctor:</span> Dr. {_esc(_display_doctor_name(doctor_name))}</td>
-        </tr>
-        <tr>
-          <td><span class="label">Invoice date:</span> {invoice.issued_at.strftime('%d %b %Y, %H:%M')}</td>
-          <td><span class="label">Payment mode:</span> {invoice.payment_mode.value.upper()}</td>
+          <td width="50%"><span class="label">Invoice date:</span> {invoice.issued_at.strftime('%d %b %Y, %H:%M')}</td>
+          <td width="50%"><span class="label">Payment mode:</span> {invoice.payment_mode.value.upper()}</td>
         </tr>
       </table>
 
-      <p class="section-title">Visits billed</p>
+      <p class="section-title">Treatments billed</p>
       <table class="rows">
-        <tr><th>Visit date</th><th>Amount</th></tr>
-        {visit_rows or '<tr><td colspan="2">No visits settled by this invoice.</td></tr>'}
+        <tr><th>Service</th><th>Doctor</th><th>Amount</th></tr>
+        {line_rows or '<tr><td colspan="3">No treatments on this invoice.</td></tr>'}
       </table>
 
       <table class="summary" style="margin-top:8px;">

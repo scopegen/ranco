@@ -5,9 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app import pdf
-from app.auth.dependencies import get_current_staff
+from app.auth.dependencies import get_current_staff, require_admin
 from app.database import get_db
-from app.models import Consultation, Invoice, Patient, PrescriptionEntry, Service, Staff, Treatment, Visit
+from app.models import Consultation, Invoice, InvoiceLine, Patient, PrescriptionEntry, Service, Staff, Treatment, Visit
+from app.routers.treatments import _billing_summary
 
 router = APIRouter(tags=["documents"])
 
@@ -55,12 +56,20 @@ def download_history_pdf(
 
     treatment_ids = [t.id for t in treatments]
     visits_by_treatment: dict = {}
-    invoices_by_treatment: dict = {}
+    treatment_billing_by_id: dict = {}
+    invoice_by_treatment: dict = {}
     if treatment_ids:
         for v in db.scalars(select(Visit).where(Visit.treatment_id.in_(treatment_ids))):
             visits_by_treatment.setdefault(v.treatment_id, []).append(v)
-        for inv in db.scalars(select(Invoice).where(Invoice.treatment_id.in_(treatment_ids))):
-            invoices_by_treatment[inv.treatment_id] = inv
+        for t in treatments:
+            treatment_billing_by_id[t.id] = _billing_summary(db, t)
+        lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.treatment_id.in_(treatment_ids))))
+        if lines:
+            invoices = {
+                inv.id: inv for inv in db.scalars(select(Invoice).where(Invoice.id.in_({l.invoice_id for l in lines})))
+            }
+            for line in lines:
+                invoice_by_treatment[line.treatment_id] = (invoices[line.invoice_id], float(line.amount))
 
     staff_ids = {c.doctor_id for c in consultations} | {t.doctor_id for t in treatments} | {
         e.added_by for e in prescriptions
@@ -80,35 +89,43 @@ def download_history_pdf(
         consultations,
         treatments,
         visits_by_treatment,
-        invoices_by_treatment,
+        treatment_billing_by_id,
+        invoice_by_treatment,
         prescriptions,
     )
     return _pdf_response(content, f"history-{pdf.patient_id_str(patient.patient_number)}.pdf")
 
 
-@router.get("/treatments/{treatment_id}/invoice/pdf")
-def download_invoice_pdf(
-    treatment_id: uuid.UUID, db: Session = Depends(get_db), _current: Staff = Depends(get_current_staff)
-):
-    treatment = db.get(Treatment, treatment_id)
-    if treatment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
-
-    invoice = db.scalar(select(Invoice).where(Invoice.treatment_id == treatment_id))
+@router.get("/invoices/{invoice_id}/pdf")
+def download_invoice_pdf(invoice_id: uuid.UUID, db: Session = Depends(get_db), _admin: Staff = Depends(require_admin)):
+    invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No invoice generated for this treatment yet")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
-    patient = db.get(Patient, treatment.patient_id)
-    service = db.get(Service, treatment.service_id)
-    doctor = db.get(Staff, treatment.doctor_id)
-    visits = list(db.scalars(select(Visit).where(Visit.treatment_id == treatment_id)))
+    lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.invoice_id == invoice_id)))
+    if not lines:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice has no treatments")
 
-    content = pdf.render_invoice_pdf(
-        patient,
-        treatment,
-        service.name if service else "Unknown",
-        doctor.name if doctor else "Unknown",
-        visits,
-        invoice,
-    )
-    return _pdf_response(content, f"invoice-{pdf.patient_id_str(patient.patient_number)}-{treatment_id.hex[:8]}.pdf")
+    treatments = {
+        t.id: t for t in db.scalars(select(Treatment).where(Treatment.id.in_({l.treatment_id for l in lines})))
+    }
+    first_treatment = next(iter(treatments.values()))
+    patient = db.get(Patient, first_treatment.patient_id)
+
+    service_ids = {t.service_id for t in treatments.values()}
+    doctor_ids = {t.doctor_id for t in treatments.values()}
+    service_by_id = {s.id: s for s in db.scalars(select(Service).where(Service.id.in_(service_ids)))}
+    doctor_by_id = {s.id: s for s in db.scalars(select(Staff).where(Staff.id.in_(doctor_ids)))}
+
+    pdf_lines = [
+        {
+            "service_name": service_by_id[t.service_id].name if t.service_id in service_by_id else "Unknown",
+            "doctor_name": doctor_by_id[t.doctor_id].name if t.doctor_id in doctor_by_id else "Unknown",
+            "amount": float(line.amount),
+        }
+        for line in lines
+        if (t := treatments.get(line.treatment_id)) is not None
+    ]
+
+    content = pdf.render_invoice_pdf(patient, pdf_lines, invoice)
+    return _pdf_response(content, f"invoice-{pdf.patient_id_str(patient.patient_number)}-{invoice_id.hex[:8]}.pdf")

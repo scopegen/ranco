@@ -260,12 +260,17 @@ class VisitOut(BaseModel):
 
 
 class GenerateInvoiceRequest(BaseModel):
+    treatment_ids: list[uuid.UUID]
     payment_mode: PaymentMode | None = None
     discount_type: Literal["percent", "amount"] | None = None
     discount_value: float | None = None
 
     @model_validator(mode="after")
-    def _validate_discount(self) -> "GenerateInvoiceRequest":
+    def _validate(self) -> "GenerateInvoiceRequest":
+        if not self.treatment_ids:
+            raise ValueError("Select at least one treatment.")
+        if len(set(self.treatment_ids)) != len(self.treatment_ids):
+            raise ValueError("The same treatment was selected more than once.")
         if self.discount_type is not None and self.discount_value is None:
             raise ValueError("discount_value is required when discount_type is set.")
         if self.discount_value is not None:
@@ -276,10 +281,15 @@ class GenerateInvoiceRequest(BaseModel):
         return self
 
 
+class InvoiceLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    treatment_id: uuid.UUID
+    amount: float
+
+
 class InvoiceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
-    treatment_id: uuid.UUID
     listed_total: float
     discount_type: Literal["percent", "amount"] | None
     discount_value: float | None
@@ -288,6 +298,7 @@ class InvoiceOut(BaseModel):
     payment_mode: PaymentMode
     issued_at: datetime
     issued_by: uuid.UUID
+    lines: list[InvoiceLineOut] = []
 
 
 # ---- Prescriptions ----

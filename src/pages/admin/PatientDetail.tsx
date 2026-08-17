@@ -29,10 +29,10 @@ export interface PatientClinicalData {
   consultations: Consultation[]
   treatments: Treatment[]
   visitsByTreatment: Record<string, Visit[]>
-  invoiceByTreatment: Record<string, Invoice | undefined>
   // Admin-only — never fetched for doctors, since the Billing tab is
-  // completely hidden from them and the endpoint is require_admin anyway.
+  // completely hidden from them and these endpoints are require_admin anyway.
   billingByTreatment: Record<string, TreatmentBilling | undefined>
+  invoices: Invoice[]
   prescriptions: PrescriptionEntry[]
 }
 
@@ -96,31 +96,29 @@ export function PatientDetail() {
   const refresh = useCallback(async () => {
     if (!id) return
     setLoading(true)
-    const [consultations, treatments, prescriptions] = await Promise.all([
+    const [consultations, treatments, prescriptions, invoices] = await Promise.all([
       clinicalApi.listConsultations(id),
       clinicalApi.listTreatments(id),
       clinicalApi.listPrescriptionsForPatient(id),
+      // Admin-only endpoint — skip entirely for doctors, who never see the
+      // Billing tab, so a 403 here would otherwise break page load.
+      isAdmin ? clinicalApi.listInvoices(id) : Promise.resolve([]),
     ])
 
     const visitsByTreatment: Record<string, Visit[]> = {}
-    const invoiceByTreatment: Record<string, Invoice | undefined> = {}
     const billingByTreatment: Record<string, TreatmentBilling | undefined> = {}
     await Promise.all(
       treatments.map(async (t) => {
-        const [visits, invoice, billing] = await Promise.all([
+        const [visits, billing] = await Promise.all([
           clinicalApi.listVisits(t.id),
-          clinicalApi.getInvoice(t.id),
-          // Admin-only endpoint — skip entirely for doctors, who never see
-          // the Billing tab, so a 403 here would otherwise break page load.
           isAdmin ? clinicalApi.getTreatmentBilling(t.id) : Promise.resolve(undefined),
         ])
         visitsByTreatment[t.id] = visits
-        invoiceByTreatment[t.id] = invoice
         billingByTreatment[t.id] = billing
       }),
     )
 
-    setData({ consultations, treatments, visitsByTreatment, invoiceByTreatment, billingByTreatment, prescriptions })
+    setData({ consultations, treatments, visitsByTreatment, billingByTreatment, invoices, prescriptions })
     setLoading(false)
   }, [id, isAdmin])
 
@@ -235,7 +233,7 @@ export function PatientDetail() {
             {activeTab === 'timeline' && <TimelineTab patient={patient} data={data} />}
             {activeTab === 'consultations' && <ConsultationsTab patient={patient} data={data} onChange={refresh} />}
             {activeTab === 'treatments' && <TreatmentsTab patient={patient} data={data} onChange={refresh} />}
-            {activeTab === 'billing' && isAdmin && <BillingTab data={data} onChange={refresh} />}
+            {activeTab === 'billing' && isAdmin && <BillingTab patient={patient} data={data} onChange={refresh} />}
           </>
         )}
 

@@ -4,7 +4,6 @@ import type { Patient } from '../../../state/PatientsContext'
 import { useClinic } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
-import { visitAmount } from '../../../types/clinical'
 import { formatDate, formatDateTime } from '../../../lib/date'
 import type { PatientClinicalData } from '../PatientDetail'
 
@@ -21,6 +20,13 @@ interface TimelineEvent {
 export function TimelineTab({ patient, data }: { patient: Patient; data: PatientClinicalData }) {
   const { doctorName, serviceName } = useClinic()
   const events: TimelineEvent[] = []
+
+  // Empty for doctors (billing data isn't fetched for them) — matches the
+  // Billing tab being admin-only.
+  const invoiceByTreatmentId: Record<string, (typeof data.invoices)[number] | undefined> = {}
+  for (const invoice of data.invoices) {
+    for (const line of invoice.lines) invoiceByTreatmentId[line.treatmentId] = invoice
+  }
 
   events.push({
     date: patient.registeredAt,
@@ -59,17 +65,17 @@ export function TimelineTab({ patient, data }: { patient: Patient; data: Patient
       }
 
       for (const visit of data.visitsByTreatment[treatment.id] ?? []) {
+        // Visits are an activity log only now — no per-visit price or
+        // payment status; the treatment as a whole is billed once.
         events.push({
           date: visit.visitDate,
           hasTime: false,
           icon: <CalendarCheck size={16} />,
           title: `Visit — ${serviceLabel}`,
-          description: formatINR(visitAmount(visit)),
-          pill: <PaymentStatusPill status={visit.paymentStatus} />,
         })
       }
 
-      const invoice = data.invoiceByTreatment[treatment.id]
+      const invoice = invoiceByTreatmentId[treatment.id]
       if (invoice) {
         events.push({
           date: invoice.issuedAt,

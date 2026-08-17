@@ -7,14 +7,13 @@ import { clinicalApi } from '../../lib/clinicalApi'
 import { formatINR } from '../../lib/currency'
 import { formatDate, formatDateTime } from '../../lib/date'
 import { PaymentStatusPill } from '../../components/PaymentStatusPill'
-import { visitAmount } from '../../types/clinical'
 
 interface LedgerLine {
   date: string
   label: string
   sub: string
   amount: number
-  kind: 'consultation' | 'visit' | 'invoice'
+  kind: 'consultation' | 'invoice'
   paid: boolean
   patientId: string
   patientName: string
@@ -34,9 +33,10 @@ export function BillingOverview() {
 
     Promise.all(
       patients.map(async (patient) => {
-        const [consultations, treatments] = await Promise.all([
+        const [consultations, treatments, invoices] = await Promise.all([
           clinicalApi.listConsultations(patient.id),
           clinicalApi.listTreatments(patient.id),
+          clinicalApi.listInvoices(patient.id),
         ])
 
         const patientLines: LedgerLine[] = consultations.map((c) => ({
@@ -50,39 +50,23 @@ export function BillingOverview() {
           patientName: patient.name,
         }))
 
-        for (const treatment of treatments) {
-          const [visits, invoice] = await Promise.all([
-            clinicalApi.listVisits(treatment.id),
-            clinicalApi.getInvoice(treatment.id),
-          ])
-          const serviceLabel = serviceName(treatment.serviceId)
-
-          for (const visit of visits) {
-            patientLines.push({
-              date: visit.visitDate,
-              label: `Visit — ${serviceLabel}`,
-              sub: doctorName(treatment.doctorId),
-              amount: visitAmount(visit),
-              kind: 'visit',
-              paid: visit.paymentStatus === 'paid',
-              patientId: patient.id,
-              patientName: patient.name,
-            })
-          }
-
-          if (invoice) {
-            // Informational only — visits it settled are already counted paid above.
-            patientLines.push({
-              date: invoice.issuedAt,
-              label: `Invoice — ${serviceLabel}`,
-              sub: `settled via ${invoice.paymentMode.toUpperCase()}`,
-              amount: invoice.finalTotal,
-              kind: 'invoice',
-              paid: true,
-              patientId: patient.id,
-              patientName: patient.name,
-            })
-          }
+        for (const invoice of invoices) {
+          // An invoice can cover several treatments picked together —
+          // list each one's service by name.
+          const serviceLabels = invoice.lines
+            .map((line) => treatments.find((t) => t.id === line.treatmentId)?.serviceId)
+            .filter((id): id is string => Boolean(id))
+            .map((id) => serviceName(id))
+          patientLines.push({
+            date: invoice.issuedAt,
+            label: `Invoice — ${serviceLabels.join(', ') || `${invoice.lines.length} treatment(s)`}`,
+            sub: `settled via ${invoice.paymentMode.toUpperCase()}`,
+            amount: invoice.finalTotal,
+            kind: 'invoice',
+            paid: true,
+            patientId: patient.id,
+            patientName: patient.name,
+          })
         }
 
         return patientLines
@@ -108,8 +92,11 @@ export function BillingOverview() {
   }
 
   const loading = patientsLoading || lines === null
-  const totalBilled = lines?.filter((l) => l.kind !== 'invoice').reduce((sum, l) => sum + l.amount, 0) ?? 0
-  const totalCollected = lines?.filter((l) => l.kind !== 'invoice' && l.paid).reduce((sum, l) => sum + l.amount, 0) ?? 0
+  // Note: this only counts consultation fees and already-invoiced
+  // treatments — a treatment's pending balance before it's invoiced isn't
+  // reflected here (see each patient's own Billing tab for that).
+  const totalBilled = lines?.reduce((sum, l) => sum + l.amount, 0) ?? 0
+  const totalCollected = lines?.filter((l) => l.paid).reduce((sum, l) => sum + l.amount, 0) ?? 0
   const outstanding = totalBilled - totalCollected
 
   return (

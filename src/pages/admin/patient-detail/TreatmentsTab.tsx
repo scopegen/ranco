@@ -1,13 +1,12 @@
-import { useMemo, useState, type SubmitEvent } from 'react'
-import { Eye, FileText } from 'lucide-react'
+import { useState, type SubmitEvent } from 'react'
+import { Eye } from 'lucide-react'
 import { Pill } from '../../../components/Pill'
 import { Button } from '../../../components/Button'
 import { Field, SelectField, TextareaField } from '../../../components/Field'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
-import { formatINR } from '../../../lib/currency'
 import { formatDate } from '../../../lib/date'
-import { visitAmount, type Consultation, type Invoice, type PaymentMode, type Treatment, type Visit } from '../../../types/clinical'
+import type { Consultation, Treatment, Visit } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 import { CategorizedServicePicker } from './ConsultationsTab'
 
@@ -167,36 +166,11 @@ function TreatmentCard({
   visits: Visit[]
   onChange: () => void
 }) {
-  const { doctorName, serviceName, logVisit, addPrescription, generateInvoice, viewInvoicePdf } = useClinic()
+  const { doctorName, serviceName, logVisit, addPrescription } = useClinic()
   const [expanded, setExpanded] = useState(false)
   const [visitFormOpen, setVisitFormOpen] = useState(false)
-  const [invoiceFormOpen, setInvoiceFormOpen] = useState(false)
-  const [viewingInvoice, setViewingInvoice] = useState(false)
-  const [viewError, setViewError] = useState<string | null>(null)
 
-  const unpaidTotal = visits.filter((v) => v.paymentStatus === 'unpaid').reduce((sum, v) => sum + visitAmount(v), 0)
   const serviceLabel = serviceName(treatment.serviceId)
-
-  // Not called until the user is done with the "view invoice" step below —
-  // this refreshes patient data, which flips treatment.status to 'finished'
-  // and would otherwise unmount the invoice form (and its View Invoice
-  // button) before there's a chance to use it.
-  function handleInvoiceDone() {
-    setInvoiceFormOpen(false)
-    onChange()
-  }
-
-  async function handleViewInvoice() {
-    setViewingInvoice(true)
-    setViewError(null)
-    try {
-      await viewInvoicePdf(treatment.id)
-    } catch (err) {
-      setViewError(err instanceof Error ? err.message : 'Failed to open the invoice')
-    } finally {
-      setViewingInvoice(false)
-    }
-  }
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
@@ -246,15 +220,10 @@ function TreatmentCard({
 
           {treatment.status === 'ongoing' && (
             <div className="flex flex-col gap-4 border-t border-rule pt-4">
-              {!visitFormOpen && !invoiceFormOpen && (
-                <div className="flex flex-wrap gap-3">
-                  <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
-                    + Log visit
-                  </Button>
-                  <Button variant="secondary" onClick={() => setInvoiceFormOpen(true)}>
-                    Mark finished / generate invoice
-                  </Button>
-                </div>
+              {!visitFormOpen && (
+                <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
+                  + Log visit
+                </Button>
               )}
 
               {visitFormOpen && (
@@ -278,27 +247,16 @@ function TreatmentCard({
                 />
               )}
 
-              {invoiceFormOpen && (
-                <GenerateInvoiceForm
-                  treatmentId={treatment.id}
-                  unpaidTotal={unpaidTotal}
-                  generateInvoice={generateInvoice}
-                  viewInvoicePdf={viewInvoicePdf}
-                  onDone={handleInvoiceDone}
-                  onCancel={() => setInvoiceFormOpen(false)}
-                />
-              )}
+              <p className="text-[12px] text-ink-faint">
+                Billing and invoicing for this treatment happen on the <span className="font-medium text-ink">Billing</span> tab.
+              </p>
             </div>
           )}
 
           {treatment.status === 'finished' && (
-            <div className="flex flex-col gap-2 border-t border-rule pt-4">
-              <Button variant="secondary" onClick={handleViewInvoice} disabled={viewingInvoice}>
-                <FileText size={15} className="mr-1.5 inline" />
-                {viewingInvoice ? 'Opening…' : 'View invoice'}
-              </Button>
-              {viewError && <p className="text-[13px] text-crit">{viewError}</p>}
-            </div>
+            <p className="border-t border-rule pt-4 text-[12px] text-ink-faint">
+              Invoiced — see the <span className="font-medium text-ink">Billing</span> tab for the invoice.
+            </p>
           )}
         </div>
       )}
@@ -384,176 +342,5 @@ function LogVisitForm({
         </Button>
       </div>
     </form>
-  )
-}
-
-type DiscountType = 'none' | 'percent' | 'amount'
-
-function GenerateInvoiceForm({
-  treatmentId,
-  unpaidTotal,
-  generateInvoice,
-  viewInvoicePdf,
-  onDone,
-  onCancel,
-}: {
-  treatmentId: string
-  unpaidTotal: number
-  generateInvoice: (
-    treatmentId: string,
-    paymentMode: PaymentMode | null,
-    discount?: { type: 'percent' | 'amount'; value: number } | null,
-  ) => Promise<Invoice>
-  viewInvoicePdf: (treatmentId: string) => Promise<void>
-  onDone: () => void
-  onCancel: () => void
-}) {
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
-  const [discountType, setDiscountType] = useState<DiscountType>('none')
-  const [discountValue, setDiscountValue] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [generatedInvoice, setGeneratedInvoice] = useState<Invoice | null>(null)
-  const [viewing, setViewing] = useState(false)
-  const [viewError, setViewError] = useState<string | null>(null)
-
-  const discountAmount = useMemo(() => {
-    const value = Number(discountValue)
-    if (discountType === 'none' || !value || value <= 0) return 0
-    if (discountType === 'percent') return Math.min(unpaidTotal * (Math.min(value, 100) / 100), unpaidTotal)
-    return Math.min(value, unpaidTotal)
-  }, [discountType, discountValue, unpaidTotal])
-
-  const payable = unpaidTotal - discountAmount
-
-  async function confirm(mode: PaymentMode | null) {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const discount =
-        discountType === 'none' || !discountValue ? null : { type: discountType, value: Number(discountValue) }
-      const invoice = await generateInvoice(treatmentId, mode, discount)
-      setGeneratedInvoice(invoice)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate the invoice')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  async function handleView() {
-    setViewing(true)
-    setViewError(null)
-    try {
-      await viewInvoicePdf(treatmentId)
-    } catch (err) {
-      setViewError(err instanceof Error ? err.message : 'Failed to open the invoice')
-    } finally {
-      setViewing(false)
-    }
-  }
-
-  if (generatedInvoice) {
-    return (
-      <div className="flex flex-col gap-4 rounded-lg bg-paper-raised p-4">
-        <p className="text-body text-ink">
-          Invoice generated — <span className="font-medium">{formatINR(generatedInvoice.finalTotal)}</span> via{' '}
-          {generatedInvoice.paymentMode.toUpperCase()}.
-        </p>
-        {viewError && <p className="text-[13px] text-crit">{viewError}</p>}
-        <div className="flex gap-3">
-          <Button onClick={handleView} disabled={viewing}>
-            {viewing ? 'Opening…' : 'View invoice'}
-          </Button>
-          <Button variant="ghost" onClick={onDone}>
-            Done
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-4 rounded-lg bg-paper-raised p-4">
-      {unpaidTotal > 0 ? (
-        <>
-          <SelectField
-            label="Payment mode"
-            options={['cash', 'card', 'upi']}
-            value={paymentMode}
-            onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-            className="w-40"
-          />
-
-          <div className="flex flex-wrap items-end gap-3">
-            <SelectField
-              label="Discount"
-              options={['none', 'percent', 'amount']}
-              value={discountType}
-              onChange={(e) => {
-                setDiscountType(e.target.value as DiscountType)
-                setDiscountValue('')
-              }}
-              className="w-32"
-            />
-            {discountType !== 'none' && (
-              <Field
-                label={discountType === 'percent' ? 'Percent off' : 'Amount off'}
-                type="number"
-                min="0"
-                max={discountType === 'percent' ? '100' : undefined}
-                value={discountValue}
-                onChange={(e) => setDiscountValue(e.target.value)}
-                placeholder={discountType === 'percent' ? '10' : '500'}
-                className="w-32"
-              />
-            )}
-          </div>
-
-          <table className="w-fit text-body">
-            <tbody>
-              <tr>
-                <td className="pr-6 text-ink-soft">Total amount</td>
-                <td className="text-right font-medium text-ink">{formatINR(unpaidTotal)}</td>
-              </tr>
-              {discountAmount > 0 && (
-                <tr>
-                  <td className="pr-6 text-ink-soft">Discount</td>
-                  <td className="text-right font-medium text-crit">&minus;{formatINR(discountAmount)}</td>
-                </tr>
-              )}
-              <tr className="border-t border-rule">
-                <td className="pr-6 pt-1 font-medium text-ink">Amount payable</td>
-                <td className="pt-1 text-right text-subheading font-bold text-accent-deep">{formatINR(payable)}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {error && <p className="text-[13px] text-crit">{error}</p>}
-
-          <div className="flex gap-3">
-            <Button onClick={() => confirm(paymentMode)} disabled={submitting}>
-              {submitting ? 'Generating…' : `Generate invoice for ${formatINR(payable)}`}
-            </Button>
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-body text-ink">Nothing outstanding — every visit is already paid.</p>
-          {error && <p className="text-[13px] text-crit">{error}</p>}
-          <div className="flex gap-3">
-            <Button onClick={() => confirm(null)} disabled={submitting}>
-              {submitting ? 'Saving…' : 'Mark treatment finished'}
-            </Button>
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
   )
 }

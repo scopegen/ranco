@@ -80,11 +80,13 @@ interface ClinicContextValue {
   ) => Promise<TreatmentBilling>
 
   generateInvoice: (
-    treatmentId: string,
+    patientId: string,
+    treatmentIds: string[],
     paymentMode: PaymentMode | null,
     discount?: { type: 'percent' | 'amount'; value: number } | null,
   ) => Promise<Invoice>
-  viewInvoicePdf: (treatmentId: string) => Promise<void>
+  listInvoices: (patientId: string) => Promise<Invoice[]>
+  viewInvoicePdf: (invoiceId: string) => Promise<void>
 
   addPrescription: (input: {
     patientId: string
@@ -233,11 +235,16 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   }
 
   async function generateInvoice(
-    treatmentId: string,
+    patientId: string,
+    treatmentIds: string[],
     paymentMode: PaymentMode | null,
     discount?: { type: 'percent' | 'amount'; value: number } | null,
   ) {
-    return clinicalApi.generateInvoice(treatmentId, paymentMode, discount)
+    return clinicalApi.generateInvoice(patientId, treatmentIds, paymentMode, discount)
+  }
+
+  async function listInvoices(patientId: string) {
+    return clinicalApi.listInvoices(patientId)
   }
 
   async function addPrescription(input: {
@@ -323,6 +330,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         updateTreatmentDiscount,
         addTreatmentPayment,
         generateInvoice,
+        listInvoices,
         addPrescription,
         editPrescription,
         addService,
