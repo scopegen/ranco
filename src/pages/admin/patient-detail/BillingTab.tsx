@@ -124,6 +124,7 @@ function GenerateInvoiceSection({
   const [error, setError] = useState<string | null>(null)
   const [generated, setGenerated] = useState<Invoice | null>(null)
   const [viewing, setViewing] = useState(false)
+  const [viewError, setViewError] = useState<string | null>(null)
 
   if (invoiceable.length === 0) return null
 
@@ -163,8 +164,11 @@ function GenerateInvoiceSection({
   async function handleView() {
     if (!generated) return
     setViewing(true)
+    setViewError(null)
     try {
       await viewInvoicePdf(generated.id)
+    } catch (err) {
+      setViewError(err instanceof Error ? err.message : 'Failed to open the invoice')
     } finally {
       setViewing(false)
     }
@@ -294,6 +298,7 @@ function GenerateInvoiceSection({
             Invoice generated — <span className="font-medium">{formatINR(generated.finalTotal)}</span> via{' '}
             {generated.paymentMode.toUpperCase()}.
           </p>
+          {viewError && <p className="text-[13px] text-crit">{viewError}</p>}
           <div className="flex gap-3">
             <Button onClick={handleView} disabled={viewing}>
               {viewing ? 'Opening…' : 'View invoice'}
