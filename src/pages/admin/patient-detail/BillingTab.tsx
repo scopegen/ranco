@@ -4,6 +4,7 @@ import { useClinic } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate, formatDateTime } from '../../../lib/date'
 import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
+import { Pill } from '../../../components/Pill'
 import { Button } from '../../../components/Button'
 import { Field, SelectField } from '../../../components/Field'
 import type { Patient } from '../../../state/PatientsContext'
@@ -35,6 +36,13 @@ function consultationCharge(c: Consultation): { fee: number; discountAmount: num
     discountAmount = Math.min(discountAmount, fee)
   }
   return { fee, discountAmount, charge: fee - discountAmount }
+}
+
+/** "10% off" / "₹100 off" for the collapsed card header — undefined when
+ * there's no discount, so the caller can skip rendering the badge. */
+function discountLabel(type: 'percent' | 'amount' | null | undefined, value: number | null | undefined): string | undefined {
+  if (!type || !value) return undefined
+  return type === 'percent' ? `${value}% off` : `${formatINR(value)} off`
 }
 
 // This tab is admin-only (gated in the section page) — doctors never reach
@@ -567,12 +575,15 @@ function CardHeader({
   label,
   date,
   paid,
+  discountLabel,
   expanded,
   onToggle,
 }: {
   label: string
   date: string
   paid: boolean
+  // e.g. "10% off" / "₹100 off" — omitted entirely when there's no discount.
+  discountLabel?: string
   expanded: boolean
   onToggle: () => void
 }) {
@@ -583,6 +594,7 @@ function CardHeader({
         <span className="text-[12px] text-ink-faint">{formatDate(date)}</span>
       </div>
       <div className="flex items-center gap-3">
+        {discountLabel && <Pill variant="accent">{discountLabel}</Pill>}
         <PaymentStatusPill status={paid ? 'paid' : 'unpaid'} />
         <button
           type="button"
@@ -624,6 +636,7 @@ function ConsultationBillingCard({
         label="Consultation"
         date={consultation.consultDate}
         paid={isPaid}
+        discountLabel={discountLabel(consultation.discountType, consultation.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
       />
@@ -654,6 +667,7 @@ function ConsultationBillingCard({
           {discountFormOpen ? (
             <DiscountForm
               current={consultation}
+              baseAmount={fee}
               onSave={async (discount) => {
                 await updateConsultationDiscount(consultation.id, discount)
                 setDiscountFormOpen(false)
@@ -704,6 +718,7 @@ function TreatmentBillingCard({
         label={serviceLabel}
         date={treatment.startedAt}
         paid={Boolean(invoice)}
+        discountLabel={discountLabel(treatment.discountType, treatment.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
       />
@@ -732,6 +747,7 @@ function TreatmentBillingCard({
           {discountFormOpen ? (
             <DiscountForm
               current={treatment}
+              baseAmount={servicePrice}
               onSave={async (discount) => {
                 await updateTreatmentDiscount(treatment.id, discount)
                 setDiscountFormOpen(false)
@@ -760,10 +776,15 @@ function TreatmentBillingCard({
  * just needs to carry the existing discount, if any, to pre-fill the form. */
 function DiscountForm({
   current,
+  baseAmount,
   onSave,
   onCancel,
 }: {
   current: { discountType?: 'percent' | 'amount' | null; discountValue?: number | null }
+  // The full service charge / consultation fee this discount applies
+  // against — needed to preview the resulting discount and charge live as
+  // the admin types, before they hit Save.
+  baseAmount: number
   onSave: (discount: { type: 'percent' | 'amount'; value: number } | null) => Promise<void>
   onCancel: () => void
 }) {
@@ -771,6 +792,15 @@ function DiscountForm({
   const [value, setValue] = useState(current.discountValue != null ? String(current.discountValue) : '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const numericValue = Number(value)
+  const hasValidPreview = type !== 'none' && numericValue > 0
+  let previewDiscount = 0
+  if (hasValidPreview) {
+    previewDiscount = type === 'percent' ? baseAmount * (numericValue / 100) : numericValue
+    previewDiscount = Math.min(previewDiscount, baseAmount)
+  }
+  const previewCharge = baseAmount - previewDiscount
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
@@ -817,6 +847,12 @@ function DiscountForm({
           placeholder={type === 'percent' ? '10' : '500'}
           className="w-32"
         />
+      )}
+      {hasValidPreview && (
+        <p className="w-full text-[13px] text-ink-soft">
+          Discount <span className="font-medium text-crit">&minus;{formatINR(previewDiscount)}</span> · charge becomes{' '}
+          <span className="font-medium text-ink">{formatINR(previewCharge)}</span>
+        </p>
       )}
       {error && <p className="w-full text-[13px] text-crit">{error}</p>}
       <Button type="submit" disabled={submitting}>
