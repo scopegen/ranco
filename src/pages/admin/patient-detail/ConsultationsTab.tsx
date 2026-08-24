@@ -177,11 +177,15 @@ interface Props {
   patient: Patient
   data: PatientClinicalData
   onChange: () => void
+  // Set when arriving via an "+ Add consultation" shortcut (overview page,
+  // quick-add menu) rather than the Consultations page's own button — skips
+  // straight to the form instead of making the doctor click again.
+  initialFormOpen?: boolean
 }
 
-export function ConsultationsTab({ patient, data, onChange }: Props) {
-  const { doctors, services, addConsultation, addPrescription } = useClinic()
-  const [formOpen, setFormOpen] = useState(false)
+export function ConsultationsTab({ patient, data, onChange, initialFormOpen = false }: Props) {
+  const { doctors, services, addConsultation } = useClinic()
+  const [formOpen, setFormOpen] = useState(initialFormOpen)
   const [submitting, setSubmitting] = useState(false)
 
   async function handleAdd(input: {
@@ -189,14 +193,15 @@ export function ConsultationsTab({ patient, data, onChange }: Props) {
     findings: string
     recommendedServiceIds: string[]
     recommendationNote?: string
-    prescriptionNote?: string
   }) {
     setSubmitting(true)
     try {
       // Billing (payment status/mode) isn't decided here — doctors log the
       // clinical record, billing is handled separately on its own track.
       // Every consultation starts unpaid; reception settles it later.
-      const consultation = await addConsultation(patient.id, {
+      // No prescription here — prescriptions are only ever added once
+      // treatment starts, from the Treatments tab.
+      await addConsultation(patient.id, {
         doctorId: input.doctorId,
         consultDate: today(),
         fee: CONSULTATION_FEE,
@@ -205,9 +210,6 @@ export function ConsultationsTab({ patient, data, onChange }: Props) {
         recommendedServiceIds: input.recommendedServiceIds,
         recommendationNote: input.recommendationNote,
       })
-      if (input.prescriptionNote) {
-        await addPrescription({ patientId: patient.id, consultationId: consultation.id, notes: input.prescriptionNote })
-      }
       setFormOpen(false)
       onChange()
     } finally {
@@ -256,7 +258,6 @@ function NewConsultationForm({
     findings: string
     recommendedServiceIds: string[]
     recommendationNote?: string
-    prescriptionNote?: string
   }) => void
   submitting: boolean
 }) {
@@ -264,7 +265,6 @@ function NewConsultationForm({
   const [findings, setFindings] = useState('')
   const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>([])
   const [recommendationNote, setRecommendationNote] = useState('')
-  const [prescriptionNote, setPrescriptionNote] = useState('')
 
   function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
@@ -273,7 +273,6 @@ function NewConsultationForm({
       findings,
       recommendedServiceIds,
       recommendationNote: recommendationNote || undefined,
-      prescriptionNote: prescriptionNote || undefined,
     })
   }
 
@@ -297,14 +296,6 @@ function NewConsultationForm({
         value={recommendationNote}
         onChange={(e) => setRecommendationNote(e.target.value)}
         placeholder="e.g. Refer to orthodontist for bite evaluation"
-      />
-
-      <TextareaField
-        label="Prescription"
-        hint="optional"
-        value={prescriptionNote}
-        onChange={(e) => setPrescriptionNote(e.target.value)}
-        placeholder="e.g. Ibuprofen 400mg, as needed for pain"
       />
 
       <div>

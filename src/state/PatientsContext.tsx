@@ -13,7 +13,11 @@ export interface Patient {
   dob: string | null
   birthYear: number | null
   email: string
+  gender: 'male' | 'female' | 'other' | null
+  height: string
   weight: string
+  emergencyContactName: string
+  emergencyContactPhone: string
   medicalConditions: string[]
   medicalHistory: string
   registeredAt: string
@@ -40,7 +44,11 @@ function toApiPayload(patient: PatientDraft) {
     dob: patient.dob ?? undefined,
     birth_year: patient.birthYear ?? undefined,
     email: patient.email || undefined,
+    gender: patient.gender ?? undefined,
+    height: patient.height ? Number(patient.height) : undefined,
     weight: patient.weight ? Number(patient.weight) : undefined,
+    emergency_contact_name: patient.emergencyContactName || undefined,
+    emergency_contact_phone: patient.emergencyContactPhone || undefined,
     medical_conditions: patient.medicalConditions,
     medical_history: patient.medicalHistory || undefined,
   }

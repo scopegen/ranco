@@ -1,28 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
-import { ArrowLeft, Download, Eye, FileText, Pencil } from 'lucide-react'
-import { usePatients } from '../../state/PatientsContext'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
+import { usePatients, type Patient } from '../../state/PatientsContext'
 import { useClinic } from '../../state/ClinicContext'
 import { useAuth } from '../../state/AuthContext'
 import { clinicalApi } from '../../lib/clinicalApi'
 import { calculateAge } from '../../lib/age'
-import { formatPatientId } from '../../lib/patientId'
+import { findPatientByCode, formatPatientId } from '../../lib/patientId'
+import { formatDate } from '../../lib/date'
 import { Pill } from '../../components/Pill'
-import { Button } from '../../components/Button'
 import type { Consultation, Invoice, PrescriptionEntry, Treatment, TreatmentBilling, Visit } from '../../types/clinical'
-import { TimelineTab } from './patient-detail/TimelineTab'
-import { ConsultationsTab } from './patient-detail/ConsultationsTab'
-import { TreatmentsTab } from './patient-detail/TreatmentsTab'
-import { BillingTab } from './patient-detail/BillingTab'
 
-const allTabs = [
-  { id: 'timeline', label: 'Timeline' },
-  { id: 'billing', label: 'Billing' },
-  { id: 'treatments', label: 'Treatments' },
-  { id: 'consultations', label: 'Consultations' },
-] as const
-
-type TabId = (typeof allTabs)[number]['id']
 type BusyAction = 'view-prescriptions' | 'save-prescriptions' | 'view-history' | null
 
 export interface PatientClinicalData {
@@ -36,18 +24,36 @@ export interface PatientClinicalData {
   prescriptions: PrescriptionEntry[]
 }
 
+// Shared with every section page (Overview, Timeline, Consultations,
+// Treatments, Billing) via useOutletContext() — fetched once here, in the
+// layout, rather than separately per section.
+export interface PatientDetailContext {
+  patient: Patient
+  data: PatientClinicalData
+  refresh: () => Promise<void>
+  isAdmin: boolean
+  busy: BusyAction
+  actionError: string | null
+  handleViewPrescriptions: () => Promise<void>
+  handleSavePrescriptions: () => Promise<void>
+  // Kept available even though no button currently triggers it — the "Full
+  // History PDF" button was removed from the UI, but the document/feature
+  // itself wasn't.
+  handleViewHistory: () => Promise<void>
+}
+
 export function PatientDetail() {
-  const { id } = useParams()
+  const { code } = useParams()
   const location = useLocation()
-  const { patients } = usePatients()
+  // The full patient-info block only makes sense on the overview (the card
+  // list) — section pages (Consultations, Treatments, …) show just the name,
+  // since the point of navigating there is the section's own content.
+  const isOverview = location.pathname.replace(/\/+$/, '') === `/admin/patients/${code}`
+  const { patients, loading: patientsLoading } = usePatients()
   const { viewPrescriptionsPdf, savePrescriptionsPdf, viewHistoryPdf } = useClinic()
   const { staff } = useAuth()
   const isAdmin = staff?.role === 'admin'
-  const tabs = isAdmin ? allTabs : allTabs.filter((tab) => tab.id !== 'billing')
-  const patient = patients.find((p) => p.id === id)
-  const requestedTab = (location.state as { tab?: TabId } | null)?.tab
-  const initialTab = requestedTab && (requestedTab !== 'billing' || isAdmin) ? requestedTab : 'timeline'
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
+  const patient = useMemo(() => (code ? findPatientByCode(patients, code) : undefined), [patients, code])
 
   const [data, setData] = useState<PatientClinicalData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,11 +61,11 @@ export function PatientDetail() {
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function handleViewPrescriptions() {
-    if (!id) return
+    if (!patient) return
     setBusy('view-prescriptions')
     setActionError(null)
     try {
-      await viewPrescriptionsPdf(id)
+      await viewPrescriptionsPdf(patient.id)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to generate the document')
     } finally {
@@ -68,11 +74,11 @@ export function PatientDetail() {
   }
 
   async function handleSavePrescriptions() {
-    if (!id || !patient) return
+    if (!patient) return
     setBusy('save-prescriptions')
     setActionError(null)
     try {
-      await savePrescriptionsPdf(id, `prescriptions-${formatPatientId(patient.patientNumber)}.pdf`)
+      await savePrescriptionsPdf(patient.id, `prescriptions-${formatPatientId(patient.patientNumber)}.pdf`)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to generate the document')
     } finally {
@@ -81,11 +87,11 @@ export function PatientDetail() {
   }
 
   async function handleViewHistory() {
-    if (!id) return
+    if (!patient) return
     setBusy('view-history')
     setActionError(null)
     try {
-      await viewHistoryPdf(id)
+      await viewHistoryPdf(patient.id)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to generate the document')
     } finally {
@@ -94,15 +100,16 @@ export function PatientDetail() {
   }
 
   const refresh = useCallback(async () => {
-    if (!id) return
+    if (!patient) return
+    const patientId = patient.id
     setLoading(true)
     const [consultations, treatments, prescriptions, invoices] = await Promise.all([
-      clinicalApi.listConsultations(id),
-      clinicalApi.listTreatments(id),
-      clinicalApi.listPrescriptionsForPatient(id),
+      clinicalApi.listConsultations(patientId),
+      clinicalApi.listTreatments(patientId),
+      clinicalApi.listPrescriptionsForPatient(patientId),
       // Admin-only endpoint — skip entirely for doctors, who never see the
       // Billing tab, so a 403 here would otherwise break page load.
-      isAdmin ? clinicalApi.listInvoices(id) : Promise.resolve([]),
+      isAdmin ? clinicalApi.listInvoices(patientId) : Promise.resolve([]),
     ])
 
     const visitsByTreatment: Record<string, Visit[]> = {}
@@ -120,7 +127,7 @@ export function PatientDetail() {
 
     setData({ consultations, treatments, visitsByTreatment, billingByTreatment, invoices, prescriptions })
     setLoading(false)
-  }, [id, isAdmin])
+  }, [patient, isAdmin])
 
   useEffect(() => {
     refresh()
@@ -129,13 +136,12 @@ export function PatientDetail() {
   if (!patient) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-2 px-6 py-16 text-center">
-        <h1>Patient not found</h1>
+        <h1>{patientsLoading ? 'Loading…' : 'Patient not found'}</h1>
       </div>
     )
   }
 
   const age = calculateAge(patient.dob, patient.birthYear)
-  const prescriptionsBusy = busy === 'view-prescriptions' || busy === 'save-prescriptions'
 
   return (
     <div className="relative">
@@ -154,145 +160,96 @@ export function PatientDetail() {
         </p>
       </div>
 
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10 pb-40 md:pb-10">
-        <header className="flex flex-col gap-3">
+      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+        {isOverview ? (
+          <header className="flex flex-col gap-3">
 
-          {/* Mobile: name+edit on the left, patient info on the right of the same row */}
-          <div className="flex items-start justify-between gap-3 md:hidden">
-            <div className="flex items-center gap-2">
+            {/* Mobile: name on the left, patient info on the right of the same row */}
+            <div className="flex items-start justify-between gap-3 md:hidden">
               <h1>{patient.name}</h1>
-              <Link
-                to={`/admin/patients/${patient.id}/edit`}
-                aria-label="Edit profile"
-                title="Edit profile"
-                className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep"
-              >
-                <Pencil size={14} />
-              </Link>
+              <p className="text-right text-[13px] leading-snug text-ink-soft">
+                <span className="font-mono">{formatPatientId(patient.patientNumber)}</span>
+                <br />
+                {age === null ? '—' : `${age} yrs`} · {patient.phone}
+              </p>
             </div>
-            <p className="text-right text-[13px] leading-snug text-ink-soft">
-              <span className="font-mono">{formatPatientId(patient.patientNumber)}</span>
-              <br />
-              {age === null ? '—' : `${age} yrs`} · {patient.phone}
-            </p>
-          </div>
 
-          {/* Desktop: name on the left, ID/age/phone on the right, spread across the row */}
-          <div className="hidden items-center justify-between gap-4 md:flex">
-            <div className="flex items-center gap-2">
+            {/* Desktop: name on the left, ID/age/phone on the right, spread across the row */}
+            <div className="hidden items-center justify-between gap-4 md:flex">
               <h1>{patient.name}</h1>
-              <Link
-                to={`/admin/patients/${patient.id}/edit`}
-                aria-label="Edit profile"
-                title="Edit profile"
-                className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep"
-              >
-                <Pencil size={14} />
-              </Link>
+              <span className="text-ink-soft">
+                <span className="font-mono">{formatPatientId(patient.patientNumber)}</span> · {age === null ? '—' : `${age} yrs`} · {patient.phone}
+              </span>
             </div>
-            <span className="text-ink-soft">
-              <span className="font-mono">{formatPatientId(patient.patientNumber)}</span> · {age === null ? '—' : `${age} yrs`} · {patient.phone}
-            </span>
-          </div>
 
-          {actionError && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{actionError}</p>}
+            {actionError && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{actionError}</p>}
 
-          {patient.medicalConditions.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-1.5">
-              {patient.medicalConditions.map((condition) => (
-                <Pill key={condition} variant="crit">
-                  {condition}
-                </Pill>
-              ))}
+            {patient.medicalConditions.length > 0 && (
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {patient.medicalConditions.map((condition) => (
+                  <Pill key={condition} variant="crit">
+                    {condition}
+                  </Pill>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-col divide-y divide-rule rounded-xl border border-rule bg-white px-4">
+              <InfoRow label="Address" value={patient.address} />
+              <InfoRow
+                label="Birthdate"
+                value={
+                  patient.dob
+                    ? `${formatDate(patient.dob)}${age !== null ? ` (Age: ${age})` : ''}`
+                    : patient.birthYear
+                      ? `Birth year ${patient.birthYear}${age !== null ? ` (Age: ${age})` : ''}`
+                      : '—'
+                }
+              />
+              <InfoRow label="Gender" value={patient.gender ? patient.gender[0].toUpperCase() + patient.gender.slice(1) : '—'} />
+              <InfoRow label="Height" value={patient.height ? `${patient.height} cm` : '— cm'} />
+              <InfoRow label="Weight" value={patient.weight ? `${patient.weight} kg` : '— kg'} />
+              <InfoRow label="Date Added" value={formatDate(patient.registeredAt)} />
+              <InfoRow label="Emergency Contact — Name" value={patient.emergencyContactName || '—'} />
+              <InfoRow label="Emergency Contact — Number" value={patient.emergencyContactPhone || '—'} />
             </div>
-          )}
-        </header>
-
-        {/* Desktop only — mobile gets these tabs in the footer instead */}
-        <div className="hidden gap-1 border-b border-rule md:flex">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`-mb-px border-b-2 px-3.5 py-2.5 text-body font-medium transition-colors duration-150 ${
-                activeTab === tab.id
-                  ? 'border-accent text-accent-deep'
-                  : 'border-transparent text-ink-soft hover:text-ink'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          </header>
+        ) : (
+          <header className="flex flex-col gap-2">
+            <h1>{patient.name}</h1>
+            {actionError && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{actionError}</p>}
+          </header>
+        )}
 
         {loading || !data ? (
           <p className="text-ink-soft">Loading…</p>
         ) : (
-          <>
-            {activeTab === 'timeline' && <TimelineTab patient={patient} data={data} />}
-            {activeTab === 'consultations' && <ConsultationsTab patient={patient} data={data} onChange={refresh} />}
-            {activeTab === 'treatments' && <TreatmentsTab patient={patient} data={data} onChange={refresh} />}
-            {activeTab === 'billing' && isAdmin && <BillingTab patient={patient} data={data} onChange={refresh} />}
-          </>
+          <Outlet
+            context={
+              {
+                patient,
+                data,
+                refresh,
+                isAdmin,
+                busy,
+                actionError,
+                handleViewPrescriptions,
+                handleSavePrescriptions,
+                handleViewHistory,
+              } satisfies PatientDetailContext
+            }
+          />
         )}
-
-        {/* Desktop only: PDF actions, moved down here now that the header is patient-info-only */}
-        <div className="hidden gap-2 border-t border-rule pt-6 md:flex">
-          <Button variant="secondary" onClick={handleViewPrescriptions} disabled={busy !== null}>
-            <FileText size={15} className="mr-1.5 inline" />
-            {busy === 'view-prescriptions' ? 'Generating…' : 'Prescriptions PDF'}
-          </Button>
-          <Button variant="secondary" onClick={handleViewHistory} disabled={busy !== null}>
-            <FileText size={15} className="mr-1.5 inline" />
-            {busy === 'view-history' ? 'Generating…' : 'Full History PDF'}
-          </Button>
-        </div>
       </div>
+    </div>
+  )
+}
 
-      {/* Mobile only: Prescription row + this patient's own tabs, replacing the global bottom nav */}
-      <div className="fixed inset-x-0 bottom-0 z-10 flex flex-col md:hidden">
-        <div className="flex items-center justify-between gap-2 border-t border-rule bg-white px-4 py-2.5">
-          <span className="text-body font-medium text-ink">{prescriptionsBusy ? 'Generating…' : 'Prescription'}</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleViewPrescriptions}
-              disabled={busy !== null}
-              aria-label="View prescriptions"
-              title="View"
-              className="flex items-center justify-center rounded-full p-2 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep disabled:opacity-50"
-            >
-              <Eye size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={handleSavePrescriptions}
-              disabled={busy !== null}
-              aria-label="Download prescriptions"
-              title="Download"
-              className="flex items-center justify-center rounded-full p-2 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep disabled:opacity-50"
-            >
-              <Download size={18} />
-            </button>
-          </div>
-        </div>
-
-        <nav className="flex border-t border-rule bg-white">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors duration-150 ${
-                activeTab === tab.id ? 'bg-accent-tint text-accent-deep' : 'text-ink-soft'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 text-body">
+      <span className="text-ink-soft">{label}</span>
+      <span className="text-right font-medium text-ink">{value}</span>
     </div>
   )
 }

@@ -235,7 +235,7 @@ export function PatientList() {
                     <tr key={patient.id} className="border-b border-rule last:border-none">
                       <td className="px-4 py-3 font-mono text-[13px] text-ink-soft">{formatPatientId(patient.patientNumber)}</td>
                       <td className="px-4 py-3">
-                        <Link to={`/admin/patients/${patient.id}`} className="font-medium text-ink hover:text-accent-deep">
+                        <Link to={`/admin/patients/${formatPatientId(patient.patientNumber)}`} className="font-medium text-ink hover:text-accent-deep">
                           {patient.name}
                         </Link>
                       </td>
@@ -244,8 +244,7 @@ export function PatientList() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <Link
-                            to={`/admin/patients/${patient.id}`}
-                            state={{ tab: 'treatments' }}
+                            to={`/admin/patients/${formatPatientId(patient.patientNumber)}/treatments`}
                             aria-label={`Log treatment for ${patient.name}`}
                             title="Log treatment"
                             className="rounded-md p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep"

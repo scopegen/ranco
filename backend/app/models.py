@@ -39,6 +39,12 @@ class StaffRole(str, PyEnum):
     doctor = "doctor"
 
 
+class Gender(str, PyEnum):
+    male = "male"
+    female = "female"
+    other = "other"
+
+
 class PaymentStatus(str, PyEnum):
     paid = "paid"
     unpaid = "unpaid"
@@ -88,7 +94,11 @@ class Patient(Base):
     dob: Mapped[date | None] = mapped_column(Date)
     birth_year: Mapped[int | None] = mapped_column(Integer)
     email: Mapped[str | None] = mapped_column(String(255))
+    gender: Mapped[Gender | None] = mapped_column(Enum(Gender, name="gender"))
+    height: Mapped[float | None] = mapped_column(Numeric(5, 2))
     weight: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    emergency_contact_name: Mapped[str | None] = mapped_column(String(120))
+    emergency_contact_phone: Mapped[str | None] = mapped_column(String(20))
     # Checkbox flags (e.g. "Diabetes", "Pregnancy") — free-text detail still
     # goes in medical_history below; this is just for at-a-glance safety flags.
     medical_conditions: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)

@@ -6,6 +6,7 @@ import { useClinic } from '../../state/ClinicContext'
 import { clinicalApi } from '../../lib/clinicalApi'
 import { formatINR } from '../../lib/currency'
 import { formatDate, formatDateTime } from '../../lib/date'
+import { formatPatientId } from '../../lib/patientId'
 import { PaymentStatusPill } from '../../components/PaymentStatusPill'
 
 interface LedgerLine {
@@ -15,7 +16,7 @@ interface LedgerLine {
   amount: number
   kind: 'consultation' | 'invoice'
   paid: boolean
-  patientId: string
+  patientCode: string
   patientName: string
 }
 
@@ -46,7 +47,7 @@ export function BillingOverview() {
           amount: c.fee,
           kind: 'consultation',
           paid: c.paymentStatus === 'paid',
-          patientId: patient.id,
+          patientCode: formatPatientId(patient.patientNumber),
           patientName: patient.name,
         }))
 
@@ -64,7 +65,7 @@ export function BillingOverview() {
             amount: invoice.finalTotal,
             kind: 'invoice',
             paid: true,
-            patientId: patient.id,
+            patientCode: formatPatientId(patient.patientNumber),
             patientName: patient.name,
           })
         }
@@ -123,7 +124,7 @@ export function BillingOverview() {
                   <div className="flex flex-col gap-0.5">
                     <span className="text-body font-medium text-ink">{line.label}</span>
                     <span className="text-[12px] text-ink-faint">
-                      <Link to={`/admin/patients/${line.patientId}`} className="hover:text-accent-deep">
+                      <Link to={`/admin/patients/${line.patientCode}`} className="hover:text-accent-deep">
                         {line.patientName}
                       </Link>
                       {' · '}

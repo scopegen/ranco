@@ -418,7 +418,10 @@ def render_history_pdf(
 
 def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
     """lines: [{'service_name': str, 'doctor_name': str, 'amount': float}, ...]
-    — one per treatment this invoice covers."""
+    — one per treatment this invoice covers. `amount` is already the exact
+    amount charged for that service (discount, if any, already folded in) —
+    the invoice shows only what was actually charged, never a discount
+    breakdown; discount stays visible only on the Billing tab."""
     line_rows = "".join(
         f"""<tr>
           <td>{_esc(line['service_name'])}</td>
@@ -426,19 +429,6 @@ def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
           <td>&#8377;{line['amount']:,.0f}</td>
         </tr>"""
         for line in lines
-    )
-
-    if invoice.discount_type == "percent":
-        discount_label = f"Discount ({invoice.discount_value:g}%)"
-    elif invoice.discount_type == "amount":
-        discount_label = "Discount (flat)"
-    else:
-        discount_label = "Discount"
-
-    discount_row = (
-        f'<tr><td class="label">{discount_label}</td><td class="amt">&#8722;&#8377;{float(invoice.discount_total):,.0f}</td></tr>'
-        if invoice.discount_total
-        else ""
     )
 
     html = f"""
@@ -461,8 +451,6 @@ def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
       </table>
 
       <table class="summary" style="margin-top:8px;">
-        <tr><td class="label">Total amount</td><td class="amt">&#8377;{float(invoice.listed_total):,.0f}</td></tr>
-        {discount_row}
         <tr><td class="label" style="font-size:11pt;">Amount payable</td><td class="amt" style="font-size:11pt;">&#8377;{float(invoice.final_total):,.0f}</td></tr>
       </table>
 

@@ -5,9 +5,12 @@ import { Button } from '../../components/Button'
 import { Field, ReadOnlyField, TextareaField } from '../../components/Field'
 import { calculateAge } from '../../lib/age'
 import { clinicalApi } from '../../lib/clinicalApi'
+import { findPatientByCode, formatPatientId } from '../../lib/patientId'
 import { usePatients, type Patient } from '../../state/PatientsContext'
 
 type BirthMode = 'dob' | 'age' | 'year'
+
+type Gender = 'male' | 'female' | 'other'
 
 interface PatientDraft {
   name: string
@@ -18,7 +21,11 @@ interface PatientDraft {
   age: string
   birthYear: string
   email: string
+  gender: Gender | null
+  height: string
   weight: string
+  emergencyContactName: string
+  emergencyContactPhone: string
   medicalConditions: string[]
   medicalHistory: string
 }
@@ -32,7 +39,11 @@ const emptyDraft: PatientDraft = {
   age: '',
   birthYear: '',
   email: '',
+  gender: null,
+  height: '',
   weight: '',
+  emergencyContactName: '',
+  emergencyContactPhone: '',
   medicalConditions: [],
   medicalHistory: '',
 }
@@ -41,6 +52,12 @@ const BIRTH_MODE_OPTIONS: { value: BirthMode; label: string }[] = [
   { value: 'dob', label: 'Date of birth' },
   { value: 'age', label: 'Age' },
   { value: 'year', label: 'Birth year only' },
+]
+
+const GENDER_OPTIONS: { value: Gender; label: string }[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
 ]
 
 function toDraft(patient: Patient): PatientDraft {
@@ -56,45 +73,40 @@ function toDraft(patient: Patient): PatientDraft {
     age: '',
     birthYear: patient.birthYear ? String(patient.birthYear) : '',
     email: patient.email,
+    gender: patient.gender,
+    height: patient.height,
     weight: patient.weight,
+    emergencyContactName: patient.emergencyContactName,
+    emergencyContactPhone: patient.emergencyContactPhone,
     medicalConditions: patient.medicalConditions,
     medicalHistory: patient.medicalHistory,
   }
 }
 
 export function NewPatient() {
-  const { id } = useParams<{ id: string }>()
-  const isEditing = Boolean(id)
+  const { code } = useParams<{ code: string }>()
+  const isEditing = Boolean(code)
 
   const [draft, setDraft] = useState<PatientDraft>(emptyDraft)
-  const [loadingPatient, setLoadingPatient] = useState(isEditing)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conditionOptions, setConditionOptions] = useState<string[]>([])
-  const { patients, addPatient, editPatient } = usePatients()
+  const { patients, loading: patientsLoading, addPatient, editPatient } = usePatients()
   const navigate = useNavigate()
+
+  const editingPatient = code ? findPatientByCode(patients, code) : undefined
+  // The patients list (loaded once for the whole /admin section) is the only
+  // source here now — the route is keyed by the human-readable code, not the
+  // internal id, so there's no per-id endpoint left to fall back on.
+  const loadingPatient = isEditing && patientsLoading && !editingPatient
 
   useEffect(() => {
     clinicalApi.listMedicalConditions().then(setConditionOptions)
   }, [])
 
   useEffect(() => {
-    if (!id) return
-    const fromList = patients.find((p) => p.id === id)
-    if (fromList) {
-      setDraft(toDraft(fromList))
-      setLoadingPatient(false)
-      return
-    }
-    // Not in the already-loaded list (e.g. direct link before it finished
-    // loading) — fetch it directly instead.
-    setLoadingPatient(true)
-    clinicalApi
-      .getPatient(id)
-      .then((p) => setDraft(toDraft(p)))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load patient'))
-      .finally(() => setLoadingPatient(false))
-  }, [id, patients])
+    if (editingPatient) setDraft(toDraft(editingPatient))
+  }, [editingPatient])
 
   const age = useMemo(() => {
     if (draft.birthMode === 'dob') return calculateAge(draft.dob)
@@ -126,7 +138,11 @@ export function NewPatient() {
       dob,
       birthYear,
       email: draft.email,
+      gender: draft.gender,
+      height: draft.height,
       weight: draft.weight,
+      emergencyContactName: draft.emergencyContactName,
+      emergencyContactPhone: draft.emergencyContactPhone,
       medicalConditions: draft.medicalConditions,
       medicalHistory: draft.medicalHistory,
     }
@@ -146,9 +162,9 @@ export function NewPatient() {
     setSubmitting(true)
     setError(null)
     try {
-      if (isEditing && id) {
-        const updated = await editPatient(id, buildPayload())
-        navigate(`/admin/patients/${updated.id}`, { state: { justUpdated: updated.name } })
+      if (isEditing && editingPatient) {
+        const updated = await editPatient(editingPatient.id, buildPayload())
+        navigate(`/admin/patients/${formatPatientId(updated.patientNumber)}`, { state: { justUpdated: updated.name } })
       } else {
         const added = await addPatient(buildPayload())
         navigate('/admin/patients', { state: { justAdded: added.name } })
@@ -168,11 +184,19 @@ export function NewPatient() {
     )
   }
 
+  if (isEditing && !editingPatient) {
+    return (
+      <div className="mx-auto flex max-w-2xl flex-col gap-2 px-6 py-16 text-center">
+        <h1>Patient not found</h1>
+      </div>
+    )
+  }
+
   return (
     <div className="relative">
       {/* Desktop: arrow floats in the corner */}
       <Link
-        to={isEditing && id ? `/admin/patients/${id}` : '/admin/patients'}
+        to={isEditing && code ? `/admin/patients/${code}` : '/admin/patients'}
         aria-label={isEditing ? 'Back to patient' : 'Back to patients'}
         title={isEditing ? 'Back to patient' : 'Back to patients'}
         className="absolute left-4 top-6 hidden items-center justify-center rounded-full p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-accent-deep sm:left-6 md:flex"
@@ -185,7 +209,7 @@ export function NewPatient() {
         {/* Mobile: arrow + eyebrow in a single row */}
         <div className="flex items-center gap-2 md:hidden">
           <Link
-            to={isEditing && id ? `/admin/patients/${id}` : '/admin/patients'}
+            to={isEditing && code ? `/admin/patients/${code}` : '/admin/patients'}
             aria-label={isEditing ? 'Back to patient' : 'Back to patients'}
             title={isEditing ? 'Back to patient' : 'Back to patients'}
             className="flex items-center justify-center rounded-full border border-rule bg-paper-raised p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
@@ -298,6 +322,27 @@ export function NewPatient() {
           <ReadOnlyField label="Age" value={age === null ? '—' : `${age} yrs`} />
         </div>
 
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-body font-medium text-ink">Gender</span>
+            <span className="text-[12px] text-ink-faint">optional</span>
+          </div>
+          <div className="inline-flex w-fit rounded-lg border border-rule bg-paper-raised p-1">
+            {GENDER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => update('gender', draft.gender === opt.value ? null : opt.value)}
+                className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                  draft.gender === opt.value ? 'bg-white text-accent shadow-sm' : 'text-ink-soft hover:text-ink'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field
             label="Email"
@@ -308,6 +353,18 @@ export function NewPatient() {
             placeholder="priya@email.com"
           />
           <Field
+            label="Height"
+            hint="optional, cm"
+            type="number"
+            min="0"
+            value={draft.height}
+            onChange={(e) => update('height', e.target.value)}
+            placeholder="165"
+          />
+        </div>
+
+        <div className="sm:w-[calc(50%-0.625rem)]">
+          <Field
             label="Weight"
             hint="optional, kg"
             type="number"
@@ -316,6 +373,28 @@ export function NewPatient() {
             onChange={(e) => update('weight', e.target.value)}
             placeholder="62"
           />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-body font-medium text-ink">Emergency contact</span>
+            <span className="text-[12px] text-ink-faint">optional</span>
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <Field
+              label="Name"
+              value={draft.emergencyContactName}
+              onChange={(e) => update('emergencyContactName', e.target.value)}
+              placeholder="Contact's name"
+            />
+            <Field
+              label="Contact number"
+              type="tel"
+              value={draft.emergencyContactPhone}
+              onChange={(e) => update('emergencyContactPhone', e.target.value)}
+              placeholder="98765 43210"
+            />
+          </div>
         </div>
 
         <div className="flex flex-col gap-2">

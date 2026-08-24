@@ -6,6 +6,7 @@ import { useClinic } from '../../state/ClinicContext'
 import { clinicalApi } from '../../lib/clinicalApi'
 import { Pill } from '../../components/Pill'
 import { formatDate } from '../../lib/date'
+import { formatPatientId } from '../../lib/patientId'
 import type { Treatment } from '../../types/clinical'
 
 interface Row {
@@ -67,7 +68,7 @@ export function TreatmentsOverview() {
               {rows!.map(({ patient, treatment }) => (
                 <tr key={treatment.id} className="border-b border-rule last:border-none">
                   <td className="px-4 py-3">
-                    <Link to={`/admin/patients/${patient.id}`} className="font-medium text-ink hover:text-accent-deep">
+                    <Link to={`/admin/patients/${formatPatientId(patient.patientNumber)}/treatments`} className="font-medium text-ink hover:text-accent-deep">
                       {patient.name}
                     </Link>
                   </td>

@@ -7,9 +7,12 @@ import { AuthProvider } from './state/AuthContext'
 import { RequireAuth } from './components/RequireAuth'
 import { PatientsProvider } from './state/PatientsContext'
 import { ClinicProvider } from './state/ClinicContext'
+import { Dashboard } from './pages/admin/Dashboard'
 import { PatientList } from './pages/admin/PatientList'
 import { NewPatient } from './pages/admin/NewPatient'
 import { PatientDetail } from './pages/admin/PatientDetail'
+import { PatientOverview } from './pages/admin/patient-detail/PatientOverview'
+import { TimelineSection, ConsultationsSection, TreatmentsSection, BillingSection } from './pages/admin/patient-detail/SectionPages'
 import { Services } from './pages/admin/Services'
 import { Doctors } from './pages/admin/Doctors'
 import { TreatmentsOverview } from './pages/admin/TreatmentsOverview'
@@ -35,11 +38,18 @@ function App() {
             </RequireAuth>
           }
         >
-          <Route index element={<Navigate to="patients" replace />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="patients" element={<PatientList />} />
           <Route path="patients/new" element={<NewPatient />} />
-          <Route path="patients/:id/edit" element={<NewPatient />} />
-          <Route path="patients/:id" element={<PatientDetail />} />
+          <Route path="patients/:code/edit" element={<NewPatient />} />
+          <Route path="patients/:code" element={<PatientDetail />}>
+            <Route index element={<PatientOverview />} />
+            <Route path="timeline" element={<TimelineSection />} />
+            <Route path="consultations" element={<ConsultationsSection />} />
+            <Route path="treatments" element={<TreatmentsSection />} />
+            <Route path="billing" element={<BillingSection />} />
+          </Route>
           <Route path="treatments" element={<TreatmentsOverview />} />
           <Route path="billing" element={<BillingOverview />} />
           <Route path="services" element={<Services />} />

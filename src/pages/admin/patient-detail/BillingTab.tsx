@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from 'react'
-import { Eye } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { useClinic } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate, formatDateTime } from '../../../lib/date'
@@ -186,7 +186,7 @@ function GenerateInvoiceSection({
         <p className="text-subheading font-medium text-ink">Generate invoice</p>
         {!open && !generated && (
           <Button variant="secondary" onClick={() => setOpen(true)}>
-            + Select treatments
+            + Select
           </Button>
         )}
       </div>
@@ -389,38 +389,35 @@ function InvoiceRow({
 function CardHeader({
   label,
   date,
-  amount,
   paid,
   expanded,
   onToggle,
 }: {
   label: string
   date: string
-  amount: number
   paid: boolean
   expanded: boolean
   onToggle: () => void
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-0.5">
         <span className="text-body font-medium text-ink">{label}</span>
+        <span className="text-[12px] text-ink-faint">{formatDate(date)}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <PaymentStatusPill status={paid ? 'paid' : 'unpaid'} />
         <button
           type="button"
           onClick={onToggle}
-          aria-label="View billing details"
-          title="View"
+          aria-label="Edit billing details"
+          title="Edit"
           className={`flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 transition-colors ${
             expanded ? 'bg-accent-tint text-accent-deep' : 'text-ink-soft hover:bg-accent-tint hover:text-accent-deep'
           }`}
         >
-          <Eye size={13} />
+          <Pencil size={13} />
         </button>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-[12px] text-ink-faint">{formatDate(date)}</span>
-        <span className="font-medium text-ink">{formatINR(amount)}</span>
-        <PaymentStatusPill status={paid ? 'paid' : 'unpaid'} />
       </div>
     </div>
   )
@@ -465,7 +462,6 @@ function ConsultationBillingCard({
       <CardHeader
         label="Consultation"
         date={consultation.consultDate}
-        amount={consultation.fee}
         paid={isPaid}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
@@ -563,7 +559,6 @@ function TreatmentBillingCard({
       <CardHeader
         label={serviceLabel}
         date={treatment.startedAt}
-        amount={chargeAfterDiscount}
         paid={billing.amountPending <= 0}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}

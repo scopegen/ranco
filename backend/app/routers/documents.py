@@ -117,11 +117,18 @@ def download_invoice_pdf(invoice_id: uuid.UUID, db: Session = Depends(get_db), _
     service_by_id = {s.id: s for s in db.scalars(select(Service).where(Service.id.in_(service_ids)))}
     doctor_by_id = {s.id: s for s in db.scalars(select(Staff).where(Staff.id.in_(doctor_ids)))}
 
+    # line.amount is each treatment's pre-discount pending amount at the time
+    # of invoicing — spread the invoice's overall discount across lines the
+    # same proportional way generate_invoice() does, so what prints here is
+    # each service's exact charged amount, not the pre-discount figure.
+    listed_total = float(invoice.listed_total)
+    discount_total = float(invoice.discount_total)
     pdf_lines = [
         {
             "service_name": service_by_id[t.service_id].name if t.service_id in service_by_id else "Unknown",
             "doctor_name": doctor_by_id[t.doctor_id].name if t.doctor_id in doctor_by_id else "Unknown",
-            "amount": float(line.amount),
+            "amount": float(line.amount)
+            - (float(line.amount) / listed_total * discount_total if listed_total else 0.0),
         }
         for line in lines
         if (t := treatments.get(line.treatment_id)) is not None

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
-from app.models import PaymentMode, PaymentStatus, ServiceType, StaffRole, TreatmentStatus
+from app.models import Gender, PaymentMode, PaymentStatus, ServiceType, StaffRole, TreatmentStatus
 
 # ---- Staff / auth ----
 
@@ -51,7 +51,11 @@ class PatientCreate(BaseModel):
     dob: date | None = None
     birth_year: int | None = None
     email: str | None = None
+    gender: Gender | None = None
+    height: float | None = None
     weight: float | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
     medical_conditions: list[str] = []
     medical_history: str | None = None
 
@@ -72,7 +76,11 @@ class PatientOut(BaseModel):
     dob: date | None
     birth_year: int | None
     email: str | None
+    gender: Gender | None
+    height: float | None
     weight: float | None
+    emergency_contact_name: str | None
+    emergency_contact_phone: str | None
     medical_conditions: list[str]
     medical_history: str | None
     added_by: uuid.UUID

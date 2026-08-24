@@ -35,7 +35,11 @@ interface RawPatient {
   dob: string | null
   birth_year: number | null
   email: string | null
+  gender: 'male' | 'female' | 'other' | null
+  height: number | null
   weight: number | null
+  emergency_contact_name: string | null
+  emergency_contact_phone: string | null
   medical_conditions: string[]
   medical_history: string | null
   added_by: string
@@ -179,7 +183,11 @@ const toPatient = (r: RawPatient): Patient => ({
   dob: r.dob,
   birthYear: r.birth_year,
   email: r.email ?? '',
+  gender: r.gender,
+  height: r.height === null ? '' : String(r.height),
   weight: r.weight === null ? '' : String(r.weight),
+  emergencyContactName: r.emergency_contact_name ?? '',
+  emergencyContactPhone: r.emergency_contact_phone ?? '',
   medicalConditions: r.medical_conditions,
   medicalHistory: r.medical_history ?? '',
   registeredAt: r.registered_at,
@@ -314,7 +322,11 @@ export const clinicalApi = {
     dob?: string
     birth_year?: number
     email?: string
+    gender?: 'male' | 'female' | 'other'
+    height?: number
     weight?: number
+    emergency_contact_name?: string
+    emergency_contact_phone?: string
     medical_conditions: string[]
     medical_history?: string
   }) => api.post<RawPatient>('/patients', input).then(toPatient),
@@ -328,7 +340,11 @@ export const clinicalApi = {
       dob?: string
       birth_year?: number
       email?: string
+      gender?: 'male' | 'female' | 'other'
+      height?: number
       weight?: number
+      emergency_contact_name?: string
+      emergency_contact_phone?: string
       medical_conditions: string[]
       medical_history?: string
     },
