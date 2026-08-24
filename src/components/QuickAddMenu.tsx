@@ -53,10 +53,12 @@ export function QuickAddMenu() {
     const code = formatPatientId(patient.patientNumber)
     setPickerMode(null)
     setOpen(false)
-    // Consultations gets a nudge to open the new-consultation form directly —
-    // same "one click to start" shortcut as the Patients overview's own
-    // "+ Add consultation" button. Billing has no equivalent auto-open yet.
-    navigate(`/admin/patients/${code}/${section}`, section === 'consultations' ? { state: { openForm: true } } : undefined)
+    // Both quick actions land straight in the relevant popup, not just the
+    // section page — Consultations opens the new-consultation form, Billing
+    // opens the Add Payment modal. Same "one click to start" shortcut as the
+    // Patients overview's own "+ Add consultation" button.
+    const state = section === 'consultations' ? { openForm: true } : { openPayment: true }
+    navigate(`/admin/patients/${code}/${section}`, { state })
   }
 
   function handleQuickAction(mode: Exclude<PickerMode, null>) {
@@ -95,16 +97,21 @@ export function QuickAddMenu() {
         >
           <QuickAddOption label="Add consultation" icon={Stethoscope} onClick={() => handleQuickAction('consultation')} />
           <QuickAddOption label="Add payment" icon={CreditCard} onClick={() => handleQuickAction('payment')} />
-          <Link
-            to="/admin/patients/new"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 rounded-full border border-rule bg-white py-2 pl-4 pr-2 text-body font-medium text-ink shadow-lg transition-colors hover:bg-paper-raised"
-          >
-            Add patient
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-tint text-accent-deep">
-              <UserPlus size={16} />
-            </span>
-          </Link>
+          {/* Doesn't make sense while already inside a specific patient's own
+              pages — you're not going to start a whole new patient from in
+              here, so it's dropped for that whole area, not just this page. */}
+          {!currentPatient && (
+            <Link
+              to="/admin/patients/new"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 rounded-full border border-rule bg-white py-2 pl-4 pr-2 text-body font-medium text-ink shadow-lg transition-colors hover:bg-paper-raised"
+            >
+              Add patient
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-tint text-accent-deep">
+                <UserPlus size={16} />
+              </span>
+            </Link>
+          )}
         </div>
 
         <button

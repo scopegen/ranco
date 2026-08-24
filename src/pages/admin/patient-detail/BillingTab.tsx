@@ -40,9 +40,9 @@ function consultationCharge(c: Consultation): { fee: number; discountAmount: num
 // This tab is admin-only (gated in the section page) — doctors never reach
 // any of the billing actions here; the backend also enforces that
 // independently via require_admin on every endpoint these call.
-export function BillingTab({ patient, data, onChange }: Props) {
+export function BillingTab({ patient, data, onChange, initialPaymentOpen = false }: Props) {
   const { doctorName, serviceName } = useClinic()
-  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [paymentOpen, setPaymentOpen] = useState(initialPaymentOpen)
 
   if (data.consultations.length === 0 && data.treatments.length === 0) {
     return <p className="text-ink-soft">No billing activity yet.</p>
@@ -127,6 +127,9 @@ interface Props {
   patient: Patient
   data: PatientClinicalData
   onChange: () => void
+  // Set when arriving here via the FAB's "Add payment" quick action — opens
+  // the Add Payment popup immediately instead of waiting for another click.
+  initialPaymentOpen?: boolean
 }
 
 function AddPaymentModal({

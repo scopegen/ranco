@@ -99,6 +99,11 @@ export function TreatmentsSection() {
 
 export function BillingSection() {
   const { patient, data, refresh, isAdmin } = useOutletContext<PatientDetailContext>()
+  const location = useLocation()
+  // Set by the FAB's "Add payment" quick action so picking it opens the Add
+  // Payment popup straight away — same shortcut Consultations already has
+  // for its own form (see openForm above).
+  const openPayment = Boolean((location.state as { openPayment?: boolean } | null)?.openPayment)
   const [historyOpen, setHistoryOpen] = useState(false)
   if (!isAdmin) return null
   return (
@@ -110,7 +115,7 @@ export function BillingSection() {
         </Button>
       }
     >
-      <BillingTab patient={patient} data={data} onChange={refresh} />
+      <BillingTab patient={patient} data={data} onChange={refresh} initialPaymentOpen={openPayment} />
       {historyOpen && <BillingHistoryModal patientId={patient.id} onClose={() => setHistoryOpen(false)} />}
     </SectionShell>
   )
