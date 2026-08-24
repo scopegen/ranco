@@ -40,9 +40,23 @@ function consultationCharge(c: Consultation): { fee: number; discountAmount: num
 // This tab is admin-only (gated in the section page) — doctors never reach
 // any of the billing actions here; the backend also enforces that
 // independently via require_admin on every endpoint these call.
-export function BillingTab({ patient, data, onChange, initialPaymentOpen = false }: Props) {
+export function BillingTab({ patient, data, onChange, openPaymentSignal }: Props) {
   const { doctorName, serviceName } = useClinic()
-  const [paymentOpen, setPaymentOpen] = useState(initialPaymentOpen)
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [seenPaymentSignal, setSeenPaymentSignal] = useState(openPaymentSignal)
+
+  // openPaymentSignal is the navigation's location.key whenever the FAB's
+  // "Add payment" sent us here — a plain boolean prop only opens the modal
+  // on first mount, so it silently did nothing the second time you were
+  // already sitting on the Billing tab and clicked it again (no remount, so
+  // useState's initial value is never re-read). Adjusted here during render
+  // (React's recommended way to sync state to a changing prop, instead of an
+  // effect) so it reliably reopens every time, since React Router hands out
+  // a fresh key on every navigate() call even when the path doesn't change.
+  if (openPaymentSignal && openPaymentSignal !== seenPaymentSignal) {
+    setSeenPaymentSignal(openPaymentSignal)
+    setPaymentOpen(true)
+  }
 
   if (data.consultations.length === 0 && data.treatments.length === 0) {
     return <p className="text-ink-soft">No billing activity yet.</p>
@@ -127,9 +141,10 @@ interface Props {
   patient: Patient
   data: PatientClinicalData
   onChange: () => void
-  // Set when arriving here via the FAB's "Add payment" quick action — opens
-  // the Add Payment popup immediately instead of waiting for another click.
-  initialPaymentOpen?: boolean
+  // The triggering navigation's location.key when arriving via the FAB's
+  // "Add payment" quick action, null/undefined otherwise — see the effect
+  // in BillingTab for why this needs to be a changing key, not a boolean.
+  openPaymentSignal?: string | null
 }
 
 function AddPaymentModal({

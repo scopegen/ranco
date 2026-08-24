@@ -102,7 +102,9 @@ export function BillingSection() {
   const location = useLocation()
   // Set by the FAB's "Add payment" quick action so picking it opens the Add
   // Payment popup straight away — same shortcut Consultations already has
-  // for its own form (see openForm above).
+  // for its own form (see openForm above). Passed down as location.key (a
+  // fresh value on every navigate() call) rather than a plain boolean — see
+  // BillingTab's effect for why.
   const openPayment = Boolean((location.state as { openPayment?: boolean } | null)?.openPayment)
   const [historyOpen, setHistoryOpen] = useState(false)
   if (!isAdmin) return null
@@ -115,7 +117,12 @@ export function BillingSection() {
         </Button>
       }
     >
-      <BillingTab patient={patient} data={data} onChange={refresh} initialPaymentOpen={openPayment} />
+      <BillingTab
+        patient={patient}
+        data={data}
+        onChange={refresh}
+        openPaymentSignal={openPayment ? location.key : null}
+      />
       {historyOpen && <BillingHistoryModal patientId={patient.id} onClose={() => setHistoryOpen(false)} />}
     </SectionShell>
   )
