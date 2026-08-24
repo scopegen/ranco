@@ -1,20 +1,14 @@
-import { useEffect, useState, type ComponentType } from 'react'
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Cake, CalendarClock, CheckCircle2, ClipboardList, Stethoscope, Users } from 'lucide-react'
+import { Cake, CalendarClock, IndianRupee, Stethoscope, Users, Wallet, X } from 'lucide-react'
 import { usePatients } from '../../state/PatientsContext'
 import { useAuth } from '../../state/AuthContext'
 import { useClinic } from '../../state/ClinicContext'
 import { clinicalApi } from '../../lib/clinicalApi'
-
-interface Stats {
-  totalPatients: number
-  dueForRecall: number
-  upcomingBirthdays: number
-  ongoingTreatments: number
-  completedLastWeek: number
-  awaitingTreatment: number
-}
+import { formatPatientId } from '../../lib/patientId'
+import { formatDate } from '../../lib/date'
+import { formatINR } from '../../lib/currency'
 
 interface DayCount {
   date: string
@@ -25,6 +19,24 @@ interface DayCount {
 interface ServiceCount {
   name: string
   count: number
+}
+
+/** One row in a stat card's "list which is represented" popup — generic
+ * enough to cover treatments, patients, whatever the stat is counting. */
+interface ListItem {
+  id: string
+  to: string
+  primary: string
+  secondary: string
+}
+
+type StatKey = 'ongoing' | 'recall' | 'birthdays' | 'due' | 'paidToday'
+
+interface DashboardData {
+  totalPatients: number
+  patientsPerDay: DayCount[]
+  servicesOpted: ServiceCount[]
+  lists: Record<StatKey, ListItem[]>
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -66,6 +78,12 @@ function isoDate(d: Date): string {
   return d.toISOString().split('T')[0]
 }
 
+/** Same calendar day in the viewer's own timezone — paidAt comes back as a
+ * tz-aware instant, so this is not the same as comparing raw date strings. */
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
 // Dashboard-only palette — kept local to this file on purpose (see the
 // color-scope decision): the rest of the app stays on the blue accent
 // theme in index.css, this page alone gets the softer multi-color look.
@@ -76,13 +94,21 @@ const PASTELS = [
   { bg: '#E2F7EC', fg: '#1FAE72' }, // mint
 ]
 
+const STAT_LIST_META: Record<StatKey, { title: string; empty: string }> = {
+  ongoing: { title: 'Ongoing Treatments', empty: 'No ongoing treatments.' },
+  recall: { title: 'Due for Re-call', empty: 'No one due for recall right now.' },
+  birthdays: { title: 'Upcoming Birthdays', empty: 'No birthdays in the next 30 days.' },
+  due: { title: 'Payment Dues', empty: 'No one has an outstanding balance.' },
+  paidToday: { title: "Payments Today", empty: 'No payments recorded today.' },
+}
+
 export function Dashboard() {
   const { staff } = useAuth()
+  const isAdmin = staff?.role === 'admin'
   const { patients, loading: patientsLoading } = usePatients()
   const { serviceName } = useClinic()
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [patientsPerDay, setPatientsPerDay] = useState<DayCount[] | null>(null)
-  const [servicesOpted, setServicesOpted] = useState<ServiceCount[] | null>(null)
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [openList, setOpenList] = useState<StatKey | null>(null)
 
   useEffect(() => {
     if (patientsLoading) return
@@ -91,93 +117,134 @@ export function Dashboard() {
     // No bulk "all consultations/treatments/prescriptions" endpoint exists —
     // fetch each patient's own records in parallel, same N+1 pattern
     // TreatmentsOverview already uses, and fold everything into clinic-wide counts.
+    // Billing is admin-only (enforced server-side too) — doctors skip those
+    // two calls entirely rather than eating a 403 on every patient.
     Promise.all(
       patients.map(async (patient) => {
-        const [consultations, treatments, prescriptions] = await Promise.all([
+        const [consultations, treatments, prescriptions, billingSummary, payments] = await Promise.all([
           clinicalApi.listConsultations(patient.id),
           clinicalApi.listTreatments(patient.id),
           clinicalApi.listPrescriptionsForPatient(patient.id),
+          isAdmin ? clinicalApi.getBillingSummary(patient.id) : Promise.resolve(null),
+          isAdmin ? clinicalApi.listPatientPayments(patient.id) : Promise.resolve([]),
         ])
-        return { patient, consultations, treatments, prescriptions }
+        return { patient, consultations, treatments, prescriptions, billingSummary, payments }
       }),
     ).then((groups) => {
       if (cancelled) return
 
       const now = new Date()
-      const weekAgo = now.getTime() - 7 * MS_PER_DAY
-      let ongoingTreatments = 0
-      let completedLastWeek = 0
-      let awaitingTreatment = 0
-      let dueForRecall = 0
 
       const countsByDate: Record<string, number> = {}
       const countsByService: Record<string, number> = {}
+      const lists: Record<StatKey, ListItem[]> = {
+        ongoing: [],
+        recall: [],
+        birthdays: [],
+        due: [],
+        paidToday: [],
+      }
+      // Sorted separately below (most owed / most recent first) rather than
+      // in patient-fetch order.
+      const dueRows: { id: string; to: string; primary: string; outstanding: number }[] = []
+      const paidTodayRows: { id: string; to: string; primary: string; amount: number; mode: string; paidAt: string }[] = []
 
-      for (const { consultations, treatments, prescriptions } of groups) {
-        for (const treatment of treatments) {
-          if (treatment.status === 'ongoing') ongoingTreatments++
-          if (treatment.status === 'finished' && treatment.completedAt && new Date(treatment.completedAt).getTime() >= weekAgo) {
-            completedLastWeek++
+      for (const { patient, consultations, treatments, prescriptions, billingSummary, payments } of groups) {
+        const code = formatPatientId(patient.patientNumber)
+
+        if (billingSummary && billingSummary.totalOutstanding > 0) {
+          dueRows.push({
+            id: patient.id,
+            to: `/admin/patients/${code}/billing`,
+            primary: patient.name,
+            outstanding: billingSummary.totalOutstanding,
+          })
+        }
+        for (const payment of payments) {
+          if (isSameLocalDay(new Date(payment.paidAt), now)) {
+            paidTodayRows.push({
+              id: payment.id,
+              to: `/admin/patients/${code}/billing`,
+              primary: patient.name,
+              amount: payment.amount,
+              mode: payment.paymentMode,
+              paidAt: payment.paidAt,
+            })
           }
+        }
+
+        for (const treatment of treatments) {
           countsByService[treatment.serviceId] = (countsByService[treatment.serviceId] ?? 0) + 1
+
+          if (treatment.status === 'ongoing') {
+            lists.ongoing.push({
+              id: treatment.id,
+              to: `/admin/patients/${code}/treatments`,
+              primary: patient.name,
+              secondary: `${serviceName(treatment.serviceId)} · started ${formatDate(treatment.startedAt)}`,
+            })
+          }
         }
 
         for (const consultation of consultations) {
           countsByDate[consultation.consultDate] = (countsByDate[consultation.consultDate] ?? 0) + 1
         }
 
-        // Same rule the Treatments tab uses to decide whether a consultation
-        // still needs a "Start treatment" prompt: a consultation is still
-        // "awaiting treatment" if any service it recommended (or, absent any
-        // recommendation, the consultation itself) has no treatment yet.
-        const hasPendingTreatment = consultations.some((consultation) => {
-          const startedServiceIds = new Set(
-            treatments.filter((t) => t.consultationId === consultation.id).map((t) => t.serviceId),
-          )
-          if (consultation.recommendedServiceIds.length > 0) {
-            return consultation.recommendedServiceIds.some((id) => !startedServiceIds.has(id))
-          }
-          return startedServiceIds.size === 0
-        })
-        if (hasPendingTreatment) awaitingTreatment++
-
         const isDueForRecall = prescriptions.some(
           (p) => p.nextVisit && (recallDueDate(p.createdAt, p.nextVisit)?.getTime() ?? Infinity) <= now.getTime(),
         )
-        if (isDueForRecall) dueForRecall++
+        if (isDueForRecall) {
+          lists.recall.push({
+            id: patient.id,
+            to: `/admin/patients/${code}`,
+            primary: patient.name,
+            secondary: patient.phone,
+          })
+        }
       }
 
-      const upcomingBirthdays = patients.filter((patient) => {
-        if (!patient.dob) return false
+      const upcomingBirthdays: { patient: (typeof patients)[number]; days: number }[] = []
+      for (const patient of patients) {
+        if (!patient.dob) continue
         const days = daysUntilNextBirthday(patient.dob, now)
-        return days !== null && days <= BIRTHDAY_WINDOW_DAYS
-      }).length
+        if (days === null || days > BIRTHDAY_WINDOW_DAYS) continue
+        upcomingBirthdays.push({ patient, days })
+      }
+      upcomingBirthdays.sort((a, b) => a.days - b.days)
+      lists.birthdays = upcomingBirthdays.map(({ patient, days }) => ({
+        id: patient.id,
+        to: `/admin/patients/${formatPatientId(patient.patientNumber)}`,
+        primary: patient.name,
+        secondary: days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`,
+      }))
 
-      setStats({
-        totalPatients: patients.length,
-        dueForRecall,
-        upcomingBirthdays,
-        ongoingTreatments,
-        completedLastWeek,
-        awaitingTreatment,
-      })
+      dueRows.sort((a, b) => b.outstanding - a.outstanding) // most owed first
+      lists.due = dueRows.map((row) => ({ id: row.id, to: row.to, primary: row.primary, secondary: formatINR(row.outstanding) }))
+
+      paidTodayRows.sort((a, b) => b.paidAt.localeCompare(a.paidAt)) // most recent first
+      lists.paidToday = paidTodayRows.map((row) => ({
+        id: row.id,
+        to: row.to,
+        primary: row.primary,
+        secondary: `${formatINR(row.amount)} · ${row.mode.toUpperCase()}`,
+      }))
 
       // Last 7 days (today included), oldest first — how many patients were
       // seen (had a consultation logged) each day.
-      const days: DayCount[] = Array.from({ length: 7 }, (_, i) => {
+      const patientsPerDay: DayCount[] = Array.from({ length: 7 }, (_, i) => {
         const d = new Date()
         d.setDate(d.getDate() - (6 - i))
         const date = isoDate(d)
         return { date, label: d.toLocaleDateString('en-IN', { weekday: 'short' }), count: countsByDate[date] ?? 0 }
       })
-      setPatientsPerDay(days)
 
       // All-time, how many times each service has been opted into (a
       // treatment started for it) — sorted most to least popular.
-      const services = Object.entries(countsByService)
+      const servicesOpted = Object.entries(countsByService)
         .map(([serviceId, count]) => ({ name: serviceName(serviceId), count }))
         .sort((a, b) => b.count - a.count)
-      setServicesOpted(services)
+
+      setData({ totalPatients: patients.length, patientsPerDay, servicesOpted, lists })
     })
 
     return () => {
@@ -186,13 +253,15 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- serviceName is stable enough in practice (services list rarely changes mid-session); including it would refire this fairly expensive fetch on every ClinicContext refresh.
   }, [patients, patientsLoading])
 
-  const loading = patientsLoading || stats === null || patientsPerDay === null || servicesOpted === null
+  const loading = patientsLoading || data === null
   const firstName = staff?.name?.split(' ')[0]
+
+  
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-1">
-        <h1>Hello{firstName ? `, ${firstName}` : ''} 👋</h1>
+        <h1>Hello{firstName ? `, ${firstName}` : ''}</h1>
         <p className="text-ink-soft">A quick snapshot of the clinic right now.</p>
       </div>
 
@@ -200,30 +269,122 @@ export function Dashboard() {
         <p className="text-ink-soft">Loading…</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            <PastelStat colorIndex={0} icon={Users} value={stats!.totalPatients} label="Total Patients" to="/admin/patients" />
-            <PastelStat colorIndex={1} icon={Stethoscope} value={stats!.ongoingTreatments} label="Ongoing Treatments" />
-            <PastelStat colorIndex={2} icon={CalendarClock} value={stats!.dueForRecall} label="Due for Re-call" />
-            <PastelStat colorIndex={3} icon={Cake} value={stats!.upcomingBirthdays} label="Upcoming Birthdays" />
-            <PastelStat colorIndex={0} icon={CheckCircle2} value={stats!.completedLastWeek} label="Completed Last Week" />
-            <PastelStat colorIndex={1} icon={ClipboardList} value={stats!.awaitingTreatment} label="Awaiting Treatment" />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            <PastelStat colorIndex={0} icon={Users} value={data!.totalPatients} label="Total Patients" to="/admin/patients" />
+            <PastelStat
+              colorIndex={1}
+              icon={Stethoscope}
+              value={data!.lists.ongoing.length}
+              label="Ongoing Treatments"
+              onClick={() => setOpenList('ongoing')}
+            />
+            <PastelStat
+              colorIndex={2}
+              icon={CalendarClock}
+              value={data!.lists.recall.length}
+              label="Due for Re-call"
+              onClick={() => setOpenList('recall')}
+            />
+            <PastelStat
+              colorIndex={3}
+              icon={Cake}
+              value={data!.lists.birthdays.length}
+              label="Upcoming Birthdays"
+              onClick={() => setOpenList('birthdays')}
+            />
+            {/* Billing is admin-only everywhere else in the app — same rule here. */}
+            {isAdmin && (
+              <>
+                <PastelStat
+                  colorIndex={2}
+                  icon={Wallet}
+                  value={data!.lists.due.length}
+                  label="Payment Dues"
+                  onClick={() => setOpenList('due')}
+                />
+                <PastelStat
+                  colorIndex={3}
+                  icon={IndianRupee}
+                  value={data!.lists.paidToday.length}
+                  label="Payments Today"
+                  onClick={() => setOpenList('paidToday')}
+                />
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
             <DashboardCard title="Patients seen — last 7 days" className="lg:col-span-3">
-              <PatientsPerDayChart data={patientsPerDay!} />
+              <PatientsPerDayChart data={data!.patientsPerDay} />
             </DashboardCard>
             <DashboardCard title="Services opted" className="lg:col-span-2">
-              <ServicesOptedChart data={servicesOpted!} />
+              <ServicesOptedChart data={data!.servicesOpted} />
             </DashboardCard>
           </div>
+
+          {openList && (
+            <StatListModal
+              title={STAT_LIST_META[openList].title}
+              emptyMessage={STAT_LIST_META[openList].empty}
+              items={data!.lists[openList]}
+              onClose={() => setOpenList(null)}
+            />
+          )}
         </>
       )}
     </div>
   )
 }
 
-function DashboardCard({ title, className = '', children }: { title: string; className?: string; children: React.ReactNode }) {
+function StatListModal({
+  title,
+  emptyMessage,
+  items,
+  onClose,
+}: {
+  title: string
+  emptyMessage: string
+  items: ListItem[]
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-start justify-center bg-ink/40 px-4 pt-20 sm:pt-28" onClick={onClose}>
+      <div
+        className="flex max-h-[70vh] w-full max-w-md flex-col gap-4 rounded-xl border border-rule bg-white p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-subheading font-medium text-ink">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex items-center justify-center rounded-full p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-ink"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1 overflow-y-auto">
+          {items.length === 0 && <p className="py-4 text-center text-body text-ink-soft">{emptyMessage}</p>}
+          {items.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to}
+              onClick={onClose}
+              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-paper-raised"
+            >
+              <span className="font-medium text-ink">{item.primary}</span>
+              <span className="text-right text-[12px] text-ink-faint">{item.secondary}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DashboardCard({ title, className = '', children }: { title: string; className?: string; children: ReactNode }) {
   return (
     <div className={`flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-[0_4px_24px_-8px_rgba(30,40,70,0.12)] ${className}`}>
       <p className="text-subheading font-medium text-ink">{title}</p>
@@ -298,17 +459,19 @@ function PastelStat({
   value,
   label,
   to,
+  onClick,
 }: {
   colorIndex: number
   icon: ComponentType<{ size?: number; className?: string }>
   value: number
   label: string
   to?: string
+  onClick?: () => void
 }) {
   const { bg, fg } = PASTELS[colorIndex % PASTELS.length]
   const content = (
     <div
-      className="flex h-full flex-col justify-between gap-4 rounded-2xl p-4 shadow-[0_4px_20px_-8px_rgba(30,40,70,0.1)] transition-transform duration-150 hover:-translate-y-0.5"
+      className="flex h-full flex-col justify-between gap-4 rounded-2xl p-4 text-left shadow-[0_4px_20px_-8px_rgba(30,40,70,0.1)] transition-transform duration-150 hover:-translate-y-0.5"
       style={{ backgroundColor: bg }}
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/70" style={{ color: fg }}>
@@ -322,5 +485,13 @@ function PastelStat({
       </div>
     </div>
   )
-  return to ? <Link to={to}>{content}</Link> : content
+  if (to) return <Link to={to}>{content}</Link>
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="w-full">
+        {content}
+      </button>
+    )
+  }
+  return content
 }
