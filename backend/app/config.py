@@ -12,7 +12,12 @@ class Settings(BaseSettings):
     db_secret_arn: str | None = None
     jwt_secret: str
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 480
+    # 90 days — sessions should survive normal day-to-day use (closing and
+    # reopening the browser, coming back the next day) without re-prompting
+    # for login, same as most consumer apps. Trade-off: a leaked token stays
+    # valid for the full window since there's no server-side revoke short of
+    # rotating jwt_secret (which logs everyone out at once).
+    jwt_expire_minutes: int = 129_600
     cors_origins: str = "http://localhost:5173"
 
     @property
