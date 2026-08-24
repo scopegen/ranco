@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Area, AreaChart, Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Cake, CalendarClock, IndianRupee, Stethoscope, Users, Wallet, X } from 'lucide-react'
 import { usePatients } from '../../state/PatientsContext'
 import { useAuth } from '../../state/AuthContext'
@@ -9,6 +9,7 @@ import { clinicalApi } from '../../lib/clinicalApi'
 import { formatPatientId } from '../../lib/patientId'
 import { formatDate } from '../../lib/date'
 import { formatINR } from '../../lib/currency'
+import type { Consultation, Treatment } from '../../types/clinical'
 
 interface DayCount {
   date: string
@@ -19,6 +20,12 @@ interface DayCount {
 interface ServiceCount {
   name: string
   count: number
+}
+
+/** {name, value} — shared shape for all three pie charts below. */
+interface PieDatum {
+  name: string
+  value: number
 }
 
 /** One row in a stat card's "list which is represented" popup — generic
@@ -36,6 +43,11 @@ interface DashboardData {
   totalPatients: number
   patientsPerDay: DayCount[]
   servicesOpted: ServiceCount[]
+  // Admin-only (billing data) — empty for doctors, who never see these
+  // three pie charts at all (see the isAdmin check around them).
+  revenueByService: PieDatum[]
+  paymentModeSplit: PieDatum[]
+  billingBreakdown: PieDatum[]
   lists: Record<StatKey, ListItem[]>
 }
 
@@ -82,6 +94,28 @@ function isoDate(d: Date): string {
  * tz-aware instant, so this is not the same as comparing raw date strings. */
 function isSameLocalDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+/** What this one treatment actually contributes to revenue — mirrors the
+ * backend's own _treatment_charge (and BillingTab's copy of the same
+ * math) so the pie charts below always agree with the Billing tab. */
+function treatmentCharge(t: Treatment): number {
+  let discount = 0
+  if (t.discountType && t.discountValue) {
+    discount = t.discountType === 'percent' ? t.servicePrice * (t.discountValue / 100) : t.discountValue
+    discount = Math.min(discount, t.servicePrice)
+  }
+  return t.servicePrice - discount
+}
+
+/** Same math, for a consultation's fee. */
+function consultationCharge(c: Consultation): number {
+  let discount = 0
+  if (c.discountType && c.discountValue) {
+    discount = c.discountType === 'percent' ? c.fee * (c.discountValue / 100) : c.discountValue
+    discount = Math.min(discount, c.fee)
+  }
+  return c.fee - discount
 }
 
 // Dashboard-only palette — kept local to this file on purpose (see the
@@ -149,18 +183,30 @@ export function Dashboard() {
       const dueRows: { id: string; to: string; primary: string; outstanding: number }[] = []
       const paidTodayRows: { id: string; to: string; primary: string; amount: number; mode: string; paidAt: string }[] = []
 
+      // The three business/billing pie charts — admin-only, same as the
+      // Payment Dues / Payments Today cards.
+      const revenueByServiceMap: Record<string, number> = {}
+      const paymentModeTotals: Record<string, number> = { cash: 0, card: 0, upi: 0 }
+      let paidSum = 0
+      let outstandingSum = 0
+
       for (const { patient, consultations, treatments, prescriptions, billingSummary, payments } of groups) {
         const code = formatPatientId(patient.patientNumber)
 
-        if (billingSummary && billingSummary.totalOutstanding > 0) {
-          dueRows.push({
-            id: patient.id,
-            to: `/admin/patients/${code}/billing`,
-            primary: patient.name,
-            outstanding: billingSummary.totalOutstanding,
-          })
+        if (billingSummary) {
+          paidSum += billingSummary.totalPaid
+          outstandingSum += billingSummary.totalOutstanding
+          if (billingSummary.totalOutstanding > 0) {
+            dueRows.push({
+              id: patient.id,
+              to: `/admin/patients/${code}/billing`,
+              primary: patient.name,
+              outstanding: billingSummary.totalOutstanding,
+            })
+          }
         }
         for (const payment of payments) {
+          paymentModeTotals[payment.paymentMode] = (paymentModeTotals[payment.paymentMode] ?? 0) + payment.amount
           if (isSameLocalDay(new Date(payment.paidAt), now)) {
             paidTodayRows.push({
               id: payment.id,
@@ -175,6 +221,7 @@ export function Dashboard() {
 
         for (const treatment of treatments) {
           countsByService[treatment.serviceId] = (countsByService[treatment.serviceId] ?? 0) + 1
+          revenueByServiceMap[treatment.serviceId] = (revenueByServiceMap[treatment.serviceId] ?? 0) + treatmentCharge(treatment)
 
           if (treatment.status === 'ongoing') {
             lists.ongoing.push({
@@ -183,6 +230,19 @@ export function Dashboard() {
               primary: patient.name,
               secondary: `${serviceName(treatment.serviceId)} · started ${formatDate(treatment.startedAt)}`,
             })
+          }
+        }
+
+        // Consultation payments aren't in the PatientPayment list above —
+        // they're settled via the older paymentStatus/paymentMode flag
+        // directly on the consultation — so fold those into the payment
+        // mode split too, or it'd badly understate cash/card/UPI totals.
+        if (isAdmin) {
+          for (const consultation of consultations) {
+            if (consultation.paymentStatus === 'paid' && consultation.paymentMode) {
+              paymentModeTotals[consultation.paymentMode] =
+                (paymentModeTotals[consultation.paymentMode] ?? 0) + consultationCharge(consultation)
+            }
           }
         }
 
@@ -244,7 +304,38 @@ export function Dashboard() {
         .map(([serviceId, count]) => ({ name: serviceName(serviceId), count }))
         .sort((a, b) => b.count - a.count)
 
-      setData({ totalPatients: patients.length, patientsPerDay, servicesOpted, lists })
+      // All-time revenue (₹, discount-adjusted) by service — top 6 named,
+      // the rest folded into "Other" so the pie stays readable.
+      const revenueSorted = Object.entries(revenueByServiceMap)
+        .map(([serviceId, value]) => ({ name: serviceName(serviceId), value }))
+        .sort((a, b) => b.value - a.value)
+      const revenueByService: PieDatum[] = revenueSorted.slice(0, 6)
+      const otherRevenue = revenueSorted.slice(6).reduce((sum, r) => sum + r.value, 0)
+      if (otherRevenue > 0) revenueByService.push({ name: 'Other', value: otherRevenue })
+
+      // How collected revenue splits across payment methods — combines
+      // PatientPayment records with paid-consultation fees (see above).
+      const paymentModeSplit: PieDatum[] = Object.entries(paymentModeTotals)
+        .filter(([, value]) => value > 0)
+        .map(([mode, value]) => ({ name: mode.toUpperCase(), value }))
+
+      // Of everything ever billed, how much has actually been collected —
+      // two slices, not three: "Billed" is the sum of the other two, not a
+      // third part of the same pie.
+      const billingBreakdown: PieDatum[] = [
+        { name: 'Collected', value: paidSum },
+        { name: 'Outstanding', value: outstandingSum },
+      ].filter((d) => d.value > 0)
+
+      setData({
+        totalPatients: patients.length,
+        patientsPerDay,
+        servicesOpted,
+        revenueByService,
+        paymentModeSplit,
+        billingBreakdown,
+        lists,
+      })
     })
 
     return () => {
@@ -321,6 +412,22 @@ export function Dashboard() {
               <ServicesOptedChart data={data!.servicesOpted} />
             </DashboardCard>
           </div>
+
+          {/* Business/billing pie charts — admin-only, same as the Payment
+              Dues / Payments Today cards above. */}
+          {isAdmin && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <DashboardCard title="Revenue by Service">
+                <DashboardPieChart data={data!.revenueByService} valueFormatter={formatINR} emptyMessage="No revenue yet." />
+              </DashboardCard>
+              <DashboardCard title="Payment Mode Split">
+                <DashboardPieChart data={data!.paymentModeSplit} valueFormatter={formatINR} emptyMessage="No payments recorded yet." />
+              </DashboardCard>
+              <DashboardCard title="Collected vs Outstanding">
+                <DashboardPieChart data={data!.billingBreakdown} valueFormatter={formatINR} emptyMessage="Nothing billed yet." />
+              </DashboardCard>
+            </div>
+          )}
 
           {openList && (
             <StatListModal
@@ -449,6 +556,48 @@ function ServicesOptedChart({ data }: { data: ServiceCount[] }) {
           ))}
         </Bar>
       </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+/** Shared by all three business/billing pie charts — just data + how to
+ * format the tooltip/legend values (₹ for all three, currently). */
+function DashboardPieChart({
+  data,
+  valueFormatter,
+  emptyMessage,
+}: {
+  data: PieDatum[]
+  valueFormatter: (value: number) => string
+  emptyMessage: string
+}) {
+  if (data.length === 0) {
+    return <p className="py-10 text-center text-body text-ink-soft">{emptyMessage}</p>
+  }
+  const total = data.reduce((sum, d) => sum + d.value, 0)
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <PieChart>
+        <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={2}>
+          {data.map((entry, i) => (
+            <Cell key={entry.name} fill={PASTELS[i % PASTELS.length].fg} stroke="white" strokeWidth={2} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={{ borderRadius: 12, border: '1px solid #e1e7ef', fontSize: 13 }}
+          formatter={(value, name) => {
+            const numeric = typeof value === 'number' ? value : 0
+            return [`${valueFormatter(numeric)} (${total ? Math.round((numeric / total) * 100) : 0}%)`, name]
+          }}
+        />
+        <Legend
+          verticalAlign="bottom"
+          height={36}
+          iconType="circle"
+          iconSize={8}
+          wrapperStyle={{ fontSize: 12, color: '#57667a' }}
+        />
+      </PieChart>
     </ResponsiveContainer>
   )
 }
