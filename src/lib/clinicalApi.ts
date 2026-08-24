@@ -429,6 +429,8 @@ export const clinicalApi = {
     treatmentId: string,
     input: { discount_type: 'percent' | 'amount' | null; discount_value: number | null },
   ) => api.patch<RawTreatment>(`/treatments/${treatmentId}/discount`, input).then(toTreatment),
+  // One click, ends today — no request body, no confirmation form.
+  endTreatment: (treatmentId: string) => api.post<RawTreatment>(`/treatments/${treatmentId}/end`).then(toTreatment),
 
   // visits
   listVisits: (treatmentId: string) =>

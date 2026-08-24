@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from 'react'
-import { Eye } from 'lucide-react'
+import { CalendarPlus, CheckCircle2 } from 'lucide-react'
 import { Pill } from '../../../components/Pill'
 import { Button } from '../../../components/Button'
 import { Field, SelectField, TextareaField } from '../../../components/Field'
@@ -166,11 +166,25 @@ function TreatmentCard({
   visits: Visit[]
   onChange: () => void
 }) {
-  const { doctorName, serviceName, logVisit, addPrescription } = useClinic()
-  const [expanded, setExpanded] = useState(false)
+  const { doctorName, serviceName, logVisit, addPrescription, endTreatment } = useClinic()
   const [visitFormOpen, setVisitFormOpen] = useState(false)
+  const [ending, setEnding] = useState(false)
+  const [endError, setEndError] = useState<string | null>(null)
 
   const serviceLabel = serviceName(treatment.serviceId)
+
+  async function handleEnd() {
+    setEnding(true)
+    setEndError(null)
+    try {
+      await endTreatment(treatment.id)
+      onChange()
+    } catch (err) {
+      setEndError(err instanceof Error ? err.message : 'Failed to end the treatment')
+    } finally {
+      setEnding(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
@@ -188,78 +202,84 @@ function TreatmentCard({
           started {formatDate(treatment.startedAt)}
           {treatment.completedAt && ` · finished ${formatDate(treatment.completedAt)}`}
         </p>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-label="View treatment details"
-          title="View"
-          className={`flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 transition-colors ${
-            expanded ? 'bg-accent-tint text-accent-deep' : 'text-ink-soft hover:bg-accent-tint hover:text-accent-deep'
-          }`}
-        >
-          <Eye size={15} />
-        </button>
+        {treatment.status === 'ongoing' && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setVisitFormOpen(true)}
+              aria-label="Log visit"
+              title="Log visit"
+              className="flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep"
+            >
+              <CalendarPlus size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={handleEnd}
+              disabled={ending}
+              aria-label="End treatment"
+              title="End treatment"
+              className="flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep disabled:opacity-50"
+            >
+              <CheckCircle2 size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
-      {expanded && (
-        <div className="flex flex-col gap-4 border-t border-rule pt-4">
-          <p className="text-[12px] text-ink-faint">{doctorName(treatment.doctorId)}</p>
+      <div className="flex flex-col gap-4 border-t border-rule pt-4">
+        <p className="text-[12px] text-ink-faint">{doctorName(treatment.doctorId)}</p>
 
-          <div className="flex flex-col gap-2">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">Visits ({visits.length})</p>
-            {visits.length === 0 && <p className="text-[13px] text-ink-faint">No visits logged yet.</p>}
-            {/* Visits are an activity log only now — no per-visit price or
-                payment status. The treatment as a whole is billed once, on
-                the Billing tab. */}
-            {visits.map((visit) => (
-              <div key={visit.id} className="text-[13px] text-ink-soft">
-                {formatDate(visit.visitDate)}
-              </div>
-            ))}
-          </div>
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">Visits ({visits.length})</p>
+          {visits.length === 0 && <p className="text-[13px] text-ink-faint">No visits logged yet.</p>}
+          {/* Visits are an activity log only now — no per-visit price or
+              payment status. The treatment as a whole is billed once, on
+              the Billing tab. */}
+          {visits.map((visit) => (
+            <div key={visit.id} className="text-[13px] text-ink-soft">
+              {formatDate(visit.visitDate)}
+            </div>
+          ))}
+        </div>
 
-          {treatment.status === 'ongoing' && (
-            <div className="flex flex-col gap-4 border-t border-rule pt-4">
-              {!visitFormOpen && (
+        {treatment.status === 'ongoing' && (
+          <div className="flex flex-col gap-4 border-t border-rule pt-4">
+            {!visitFormOpen && (
+              <div className="flex flex-wrap items-center gap-3">
                 <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
                   + Log visit
                 </Button>
-              )}
+                <Button variant="secondary" onClick={handleEnd} disabled={ending}>
+                  {ending ? 'Ending…' : 'End treatment'}
+                </Button>
+              </div>
+            )}
+            {endError && <p className="text-[13px] text-crit">{endError}</p>}
 
-              {visitFormOpen && (
-                <LogVisitForm
-                  onSubmit={async (input) => {
-                    const visit = await logVisit(treatment.id, { visitDate: input.visitDate })
-                    if (input.prescription) {
-                      await addPrescription({
-                        patientId: patient.id,
-                        visitId: visit.id,
-                        diagnosis: input.prescription.diagnosis,
-                        notes: input.prescription.notes,
-                        advice: input.prescription.advice,
-                        nextVisit: input.prescription.nextVisit,
-                      })
-                    }
-                    setVisitFormOpen(false)
-                    onChange()
-                  }}
-                  onCancel={() => setVisitFormOpen(false)}
-                />
-              )}
-
-              <p className="text-[12px] text-ink-faint">
-                Billing and invoicing for this treatment happen on the <span className="font-medium text-ink">Billing</span> tab.
-              </p>
-            </div>
-          )}
-
-          {treatment.status === 'finished' && (
-            <p className="border-t border-rule pt-4 text-[12px] text-ink-faint">
-              Invoiced — see the <span className="font-medium text-ink">Billing</span> tab for the invoice.
-            </p>
-          )}
-        </div>
-      )}
+            {visitFormOpen && (
+              <LogVisitForm
+                onSubmit={async (input) => {
+                  const visit = await logVisit(treatment.id, { visitDate: input.visitDate })
+                  if (input.prescription) {
+                    await addPrescription({
+                      patientId: patient.id,
+                      visitId: visit.id,
+                      diagnosis: input.prescription.diagnosis,
+                      notes: input.prescription.notes,
+                      advice: input.prescription.advice,
+                      nextVisit: input.prescription.nextVisit,
+                    })
+                  }
+                  setVisitFormOpen(false)
+                  onChange()
+                }}
+                onCancel={() => setVisitFormOpen(false)}
+              />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

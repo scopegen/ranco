@@ -73,6 +73,9 @@ interface ClinicContextValue {
 
   logVisit: (treatmentId: string, input: { visitDate: string }) => Promise<Visit>
 
+  // One click, ends today.
+  endTreatment: (treatmentId: string) => Promise<Treatment>
+
   // Discounts stay a per-service concern — set on the treatment itself.
   updateTreatmentDiscount: (
     treatmentId: string,
@@ -227,6 +230,10 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     return clinicalApi.logVisit(treatmentId, { visit_date: input.visitDate })
   }
 
+  async function endTreatment(treatmentId: string) {
+    return clinicalApi.endTreatment(treatmentId)
+  }
+
   async function updateTreatmentDiscount(
     treatmentId: string,
     discount: { type: 'percent' | 'amount'; value: number } | null,
@@ -347,6 +354,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         updateConsultationDiscount,
         startTreatment,
         logVisit,
+        endTreatment,
         updateTreatmentDiscount,
         getBillingSummary,
         addPatientPayment,

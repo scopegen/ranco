@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_staff, require_admin
 from app.database import get_db
-from app.models import Consultation, Service, Staff, Treatment, TreatmentHandoff
+from app.models import Consultation, Service, Staff, Treatment, TreatmentHandoff, TreatmentStatus
 from app.schemas import (
     TreatmentCreate,
     TreatmentDiscountUpdate,
@@ -127,6 +128,28 @@ def update_treatment_discount(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
     treatment.discount_type = payload.discount_type
     treatment.discount_value = payload.discount_value
+    db.commit()
+    db.refresh(treatment)
+    return treatment
+
+
+@router.post("/treatments/{treatment_id}/end", response_model=TreatmentOut)
+def end_treatment(
+    treatment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current: Staff = Depends(get_current_staff),
+):
+    """Marks a treatment finished, completed today — one click, no form.
+    Same access as logging a visit (any staff, not admin-only); billing is
+    untouched by this, same as everything else in the new combined-bill
+    model."""
+    treatment = db.get(Treatment, treatment_id)
+    if treatment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
+    if treatment.status == TreatmentStatus.finished:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Treatment is already finished")
+    treatment.status = TreatmentStatus.finished
+    treatment.completed_at = date.today()
     db.commit()
     db.refresh(treatment)
     return treatment
