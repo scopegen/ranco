@@ -223,8 +223,7 @@ export function NewPatient() {
         <p className="hidden text-[12px] font-medium uppercase tracking-wider text-accent md:block">Admin · Patients</p>
         <h1>{isEditing ? 'Edit patient' : 'Add patient'}</h1>
         <p className="max-w-[52ch] text-ink-soft">
-          Name, phone, address, and some form of date of birth are required — this is the record
-          everything else (consultations, treatments, billing) traces back to.
+         
         </p>
       </header>
 
@@ -237,7 +236,7 @@ export function NewPatient() {
             required
             value={draft.name}
             onChange={(e) => update('name', e.target.value)}
-            placeholder="Priya Sharma"
+            placeholder="Full Name"
           />
           <Field
             label="Phone"
@@ -245,7 +244,7 @@ export function NewPatient() {
             type="tel"
             value={draft.phone}
             onChange={(e) => update('phone', e.target.value)}
-            placeholder="98765 43210"
+            placeholder="9999999999"
           />
         </div>
 
@@ -254,7 +253,7 @@ export function NewPatient() {
           required
           value={draft.address}
           onChange={(e) => update('address', e.target.value)}
-          placeholder="House no., street, city, pincode"
+          placeholder=""
         />
 
         <div className="flex flex-col gap-2">
@@ -262,9 +261,9 @@ export function NewPatient() {
             <span className="text-body font-medium text-ink">
               Date of birth <span className="text-accent">*</span>
             </span>
-            <span className="text-[12px] text-ink-faint">
+            {/* <span className="text-[12px] text-ink-faint">
               exact date preferred — age or birth year works if that's not known
-            </span>
+            </span> */}
           </div>
           <div className="inline-flex w-fit rounded-lg border border-rule bg-paper-raised p-1">
             {BIRTH_MODE_OPTIONS.map((opt) => (
@@ -350,7 +349,7 @@ export function NewPatient() {
             type="email"
             value={draft.email}
             onChange={(e) => update('email', e.target.value)}
-            placeholder="priya@email.com"
+            placeholder="ranco@email.com"
           />
           <Field
             label="Height"
@@ -400,7 +399,7 @@ export function NewPatient() {
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-body font-medium text-ink">Medical conditions</span>
-            <span className="text-[12px] text-ink-faint">optional — check any that apply</span>
+            <span className="text-[12px] text-ink-faint">optional</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5 rounded-lg border border-rule bg-paper-raised p-4 sm:grid-cols-2">
             {conditionOptions.map((condition) => (
@@ -419,10 +418,10 @@ export function NewPatient() {
 
         <TextareaField
           label="Medical history"
-          hint="optional — any other detail, allergies, ongoing medications"
+          hint="optional"
           value={draft.medicalHistory}
           onChange={(e) => update('medicalHistory', e.target.value)}
-          placeholder="e.g. penicillin allergy, on blood pressure medication"
+          placeholder=""
         />
 
         <div className="flex items-center gap-3 pt-2">

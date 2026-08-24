@@ -133,7 +133,7 @@ export function Dashboard() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-1">
-        <h1>Dashboard</h1>
+        
         <p className="text-ink-soft">A quick snapshot of the clinic right now.</p>
       </div>
 

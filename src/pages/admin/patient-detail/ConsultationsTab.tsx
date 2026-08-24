@@ -286,16 +286,16 @@ function NewConsultationForm({
         onChange={(e) => setDoctorId(doctors.find((d) => d.name === e.target.value)!.id)}
       />
 
-      <TextareaField label="Findings" required value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="What the exam found" />
+      <TextareaField label="Findings" required value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="" />
 
       <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
 
       <TextareaField
         label="Additional recommendation"
-        hint="optional — for anything not in the service catalog"
+        hint="optional"
         value={recommendationNote}
         onChange={(e) => setRecommendationNote(e.target.value)}
-        placeholder="e.g. Refer to orthodontist for bite evaluation"
+        placeholder=""
       />
 
       <div>
@@ -433,7 +433,7 @@ function EditConsultationForm({
 
       <TextareaField
         label="Additional recommendation"
-        hint="optional — for anything not in the service catalog"
+        hint="optional"
         value={recommendationNote}
         onChange={(e) => setRecommendationNote(e.target.value)}
         placeholder="e.g. Refer to orthodontist for bite evaluation"
