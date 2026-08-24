@@ -1,7 +1,10 @@
 import { useEffect, useState, type ComponentType } from 'react'
 import { Link } from 'react-router-dom'
-import { Cake, CalendarClock, CheckCircle2, ClipboardList, Eye, Plus, Stethoscope, Users } from 'lucide-react'
+import { Area, AreaChart, Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Cake, CalendarClock, CheckCircle2, ClipboardList, Stethoscope, Users } from 'lucide-react'
 import { usePatients } from '../../state/PatientsContext'
+import { useAuth } from '../../state/AuthContext'
+import { useClinic } from '../../state/ClinicContext'
 import { clinicalApi } from '../../lib/clinicalApi'
 
 interface Stats {
@@ -11,6 +14,17 @@ interface Stats {
   ongoingTreatments: number
   completedLastWeek: number
   awaitingTreatment: number
+}
+
+interface DayCount {
+  date: string
+  label: string
+  count: number
+}
+
+interface ServiceCount {
+  name: string
+  count: number
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -48,9 +62,27 @@ function daysUntilNextBirthday(dob: string, from: Date): number | null {
   return Math.round((next.getTime() - fromMidnight.getTime()) / MS_PER_DAY)
 }
 
+function isoDate(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
+// Dashboard-only palette — kept local to this file on purpose (see the
+// color-scope decision): the rest of the app stays on the blue accent
+// theme in index.css, this page alone gets the softer multi-color look.
+const PASTELS = [
+  { bg: '#EDEBFB', fg: '#6C5CE7' }, // lavender
+  { bg: '#E1F1FC', fg: '#2F8FE0' }, // sky blue
+  { bg: '#FBE7F0', fg: '#E15B96' }, // pink
+  { bg: '#E2F7EC', fg: '#1FAE72' }, // mint
+]
+
 export function Dashboard() {
+  const { staff } = useAuth()
   const { patients, loading: patientsLoading } = usePatients()
+  const { serviceName } = useClinic()
   const [stats, setStats] = useState<Stats | null>(null)
+  const [patientsPerDay, setPatientsPerDay] = useState<DayCount[] | null>(null)
+  const [servicesOpted, setServicesOpted] = useState<ServiceCount[] | null>(null)
 
   useEffect(() => {
     if (patientsLoading) return
@@ -78,12 +110,20 @@ export function Dashboard() {
       let awaitingTreatment = 0
       let dueForRecall = 0
 
+      const countsByDate: Record<string, number> = {}
+      const countsByService: Record<string, number> = {}
+
       for (const { consultations, treatments, prescriptions } of groups) {
         for (const treatment of treatments) {
           if (treatment.status === 'ongoing') ongoingTreatments++
           if (treatment.status === 'finished' && treatment.completedAt && new Date(treatment.completedAt).getTime() >= weekAgo) {
             completedLastWeek++
           }
+          countsByService[treatment.serviceId] = (countsByService[treatment.serviceId] ?? 0) + 1
+        }
+
+        for (const consultation of consultations) {
+          countsByDate[consultation.consultDate] = (countsByDate[consultation.consultDate] ?? 0) + 1
         }
 
         // Same rule the Treatments tab uses to decide whether a consultation
@@ -121,107 +161,166 @@ export function Dashboard() {
         completedLastWeek,
         awaitingTreatment,
       })
+
+      // Last 7 days (today included), oldest first — how many patients were
+      // seen (had a consultation logged) each day.
+      const days: DayCount[] = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date()
+        d.setDate(d.getDate() - (6 - i))
+        const date = isoDate(d)
+        return { date, label: d.toLocaleDateString('en-IN', { weekday: 'short' }), count: countsByDate[date] ?? 0 }
+      })
+      setPatientsPerDay(days)
+
+      // All-time, how many times each service has been opted into (a
+      // treatment started for it) — sorted most to least popular.
+      const services = Object.entries(countsByService)
+        .map(([serviceId, count]) => ({ name: serviceName(serviceId), count }))
+        .sort((a, b) => b.count - a.count)
+      setServicesOpted(services)
     })
 
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- serviceName is stable enough in practice (services list rarely changes mid-session); including it would refire this fairly expensive fetch on every ClinicContext refresh.
   }, [patients, patientsLoading])
 
-  const loading = patientsLoading || stats === null
+  const loading = patientsLoading || stats === null || patientsPerDay === null || servicesOpted === null
+  const firstName = staff?.name?.split(' ')[0]
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-1">
-        
+        <h1>Hello{firstName ? `, ${firstName}` : ''} 👋</h1>
         <p className="text-ink-soft">A quick snapshot of the clinic right now.</p>
       </div>
 
       {loading ? (
         <p className="text-ink-soft">Loading…</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatWidget
-            icon={Users}
-            title="Patients"
-            addTo="/admin/patients/new"
-            rows={[
-              { label: 'Total Patients', value: stats!.totalPatients, icon: Eye, to: '/admin/patients' },
-              { label: 'Total Patient for Re-call', value: stats!.dueForRecall, icon: CalendarClock },
-              { label: 'Upcoming Birthdays', value: stats!.upcomingBirthdays, icon: Cake },
-            ]}
-          />
-          <StatWidget
-            icon={Stethoscope}
-            title="Treatments"
-            rows={[
-              { label: 'Ongoing Treatments', value: stats!.ongoingTreatments, icon: Stethoscope },
-              { label: 'Completed Last Week', value: stats!.completedLastWeek, icon: CheckCircle2 },
-              { label: 'Awaiting Treatment Start', value: stats!.awaitingTreatment, icon: ClipboardList },
-            ]}
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <PastelStat colorIndex={0} icon={Users} value={stats!.totalPatients} label="Total Patients" to="/admin/patients" />
+            <PastelStat colorIndex={1} icon={Stethoscope} value={stats!.ongoingTreatments} label="Ongoing Treatments" />
+            <PastelStat colorIndex={2} icon={CalendarClock} value={stats!.dueForRecall} label="Due for Re-call" />
+            <PastelStat colorIndex={3} icon={Cake} value={stats!.upcomingBirthdays} label="Upcoming Birthdays" />
+            <PastelStat colorIndex={0} icon={CheckCircle2} value={stats!.completedLastWeek} label="Completed Last Week" />
+            <PastelStat colorIndex={1} icon={ClipboardList} value={stats!.awaitingTreatment} label="Awaiting Treatment" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <DashboardCard title="Patients seen — last 7 days" className="lg:col-span-3">
+              <PatientsPerDayChart data={patientsPerDay!} />
+            </DashboardCard>
+            <DashboardCard title="Services opted" className="lg:col-span-2">
+              <ServicesOptedChart data={servicesOpted!} />
+            </DashboardCard>
+          </div>
+        </>
       )}
     </div>
   )
 }
 
-function StatWidget({
-  icon: HeaderIcon,
-  title,
-  addTo,
-  rows,
-}: {
-  icon: ComponentType<{ size?: number; className?: string }>
-  title: string
-  addTo?: string
-  rows: { label: string; value: number; icon: ComponentType<{ size?: number; className?: string }>; to?: string }[]
-}) {
+function DashboardCard({ title, className = '', children }: { title: string; className?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-rule bg-white p-5 shadow-sm">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-ink">
-          <HeaderIcon size={18} className="text-accent-deep" />
-          <span className="text-subheading font-medium">{title}</span>
-        </div>
-        {addTo && (
-          <Link
-            to={addTo}
-            aria-label={`Add ${title.toLowerCase()}`}
-            title={`Add ${title.toLowerCase()}`}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-tint text-accent-deep transition-colors hover:bg-accent hover:text-white"
-          >
-            <Plus size={16} />
-          </Link>
-        )}
-      </div>
+    <div className={`flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-[0_4px_24px_-8px_rgba(30,40,70,0.12)] ${className}`}>
+      <p className="text-subheading font-medium text-ink">{title}</p>
+      {children}
+    </div>
+  )
+}
 
-      <div className="flex flex-col divide-y divide-rule">
-        {rows.map((row) => {
-          const content = (
-            <>
-              <div className="flex items-baseline gap-2">
-                <span className="text-heading font-bold text-accent-deep">{row.value}</span>
-                <span className="text-body text-ink-soft">{row.label}</span>
-              </div>
-              <row.icon size={16} className="text-ink-faint" />
-            </>
-          )
-          return row.to ? (
-            <Link
-              key={row.label}
-              to={row.to}
-              className="flex items-center justify-between gap-3 py-2.5 transition-colors hover:text-accent-deep"
-            >
-              {content}
-            </Link>
-          ) : (
-            <div key={row.label} className="flex items-center justify-between gap-3 py-2.5">
-              {content}
-            </div>
-          )
-        })}
+function PatientsPerDayChart({ data }: { data: DayCount[] }) {
+  const total = data.reduce((sum, d) => sum + d.count, 0)
+  if (total === 0) {
+    return <p className="py-10 text-center text-body text-ink-soft">No patients seen in the last 7 days.</p>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={240}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+        <defs>
+          <linearGradient id="patientsFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2F8FE0" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="#2F8FE0" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#8894a3' }} axisLine={false} tickLine={false} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#8894a3' }} axisLine={false} tickLine={false} width={28} />
+        <Tooltip
+          contentStyle={{ borderRadius: 12, border: '1px solid #e1e7ef', fontSize: 13 }}
+          labelFormatter={(label, payload) => payload?.[0]?.payload?.date ?? label}
+          formatter={(value) => [`${value} patient${value === 1 ? '' : 's'}`, '']}
+        />
+        <Area type="monotone" dataKey="count" stroke="#2F8FE0" strokeWidth={2.5} fill="url(#patientsFill)" />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+function ServicesOptedChart({ data }: { data: ServiceCount[] }) {
+  if (data.length === 0) {
+    return <p className="py-10 text-center text-body text-ink-soft">No treatments logged yet.</p>
+  }
+  const top = data.slice(0, 8)
+  const height = Math.max(160, top.length * 34)
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={top} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: '#8894a3' }} axisLine={false} tickLine={false} />
+        <YAxis
+          type="category"
+          dataKey="name"
+          tick={{ fontSize: 12, fill: '#101826' }}
+          axisLine={false}
+          tickLine={false}
+          width={110}
+        />
+        <Tooltip
+          cursor={{ fill: '#f3f6fa' }}
+          contentStyle={{ borderRadius: 12, border: '1px solid #e1e7ef', fontSize: 13 }}
+          formatter={(value) => [`${value} opted`, '']}
+        />
+        <Bar dataKey="count" radius={[0, 8, 8, 0]} barSize={16}>
+          {top.map((entry, i) => (
+            <Cell key={entry.name} fill={PASTELS[i % PASTELS.length].fg} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function PastelStat({
+  colorIndex,
+  icon: Icon,
+  value,
+  label,
+  to,
+}: {
+  colorIndex: number
+  icon: ComponentType<{ size?: number; className?: string }>
+  value: number
+  label: string
+  to?: string
+}) {
+  const { bg, fg } = PASTELS[colorIndex % PASTELS.length]
+  const content = (
+    <div
+      className="flex h-full flex-col justify-between gap-4 rounded-2xl p-4 shadow-[0_4px_20px_-8px_rgba(30,40,70,0.1)] transition-transform duration-150 hover:-translate-y-0.5"
+      style={{ backgroundColor: bg }}
+    >
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/70" style={{ color: fg }}>
+        <Icon size={18} />
+      </span>
+      <div>
+        <p className="text-heading font-bold" style={{ color: fg }}>
+          {value}
+        </p>
+        <p className="text-[13px] font-medium text-ink-soft">{label}</p>
       </div>
     </div>
   )
+  return to ? <Link to={to}>{content}</Link> : content
 }
