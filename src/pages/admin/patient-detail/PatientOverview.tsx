@@ -40,12 +40,14 @@ export function PatientOverview() {
 
       {/* Only on this page (the patient's own overview) — the global "+"
           quick-add button shifts up (see QuickAddMenu) to leave this anchor
-          spot free, so this sits directly below it. */}
+          spot free, so this sits directly below it. bottom-5 (not bottom-20)
+          on mobile because AdminLayout hides its global tab bar on every
+          patient page, this one included — no bar left to clear. */}
       <Link
         to={`/admin/patients/${formatPatientId(patient.patientNumber)}/edit`}
         aria-label="Edit patient"
         title="Edit patient"
-        className="fixed bottom-20 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full border border-rule bg-white text-accent-deep shadow-[0_10px_22px_-8px_rgba(30,95,140,0.35)] transition-transform duration-150 hover:bg-paper-raised md:bottom-8 md:right-8"
+        className="fixed bottom-5 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full border border-rule bg-white text-accent-deep shadow-[0_10px_22px_-8px_rgba(30,95,140,0.35)] transition-transform duration-150 hover:bg-paper-raised md:bottom-8 md:right-8"
       >
         <Pencil size={20} />
       </Link>

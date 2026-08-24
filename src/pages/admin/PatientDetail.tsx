@@ -145,20 +145,22 @@ export function PatientDetail() {
 
   return (
     <div className="relative">
-      {/* Flush against the left edge of the content area (next to the sidebar), not pulled into the centered column below */}
-      <div className="flex items-center gap-2 px-6 pt-6 md:px-8">
-        <Link
-          to="/admin/patients"
-          aria-label="Back to patients"
-          title="Back to patients"
-          className="flex items-center justify-center rounded-full border border-rule bg-paper-raised p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
-        >
-          <ArrowLeft size={16} />
-        </Link>
-        <p className="rounded-md bg-white px-2.5 py-1 text-[12px] font-medium uppercase tracking-wider text-accent">
-          Admin · Patients
-        </p>
-      </div>
+      {/* Flush against the left edge of the content area (next to the sidebar), not pulled into the centered column below — only on the overview; the section pages (Consultations, Treatments, …) don't show this row at all */}
+      {isOverview && (
+        <div className="flex items-center gap-2 px-6 pt-6 md:px-8">
+          <Link
+            to="/admin/patients"
+            aria-label="Back to patients"
+            title="Back to patients"
+            className="flex items-center justify-center rounded-full border border-rule bg-paper-raised p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
+          >
+            <ArrowLeft size={16} />
+          </Link>
+          <p className="rounded-md bg-white px-2.5 py-1 text-[12px] font-medium uppercase tracking-wider text-accent">
+            Admin · Patients
+          </p>
+        </div>
+      )}
 
       <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
         {isOverview ? (

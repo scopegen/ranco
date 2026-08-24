@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useMatch, Link } from 'react-router-dom'
+import { useNavigate, useMatch, useLocation, Link } from 'react-router-dom'
 import { CreditCard, Plus, Stethoscope, UserPlus } from 'lucide-react'
 import { PatientPicker } from './PatientPicker'
 import { usePatients, type Patient } from '../state/PatientsContext'
 import { findPatientByCode, formatPatientId } from '../lib/patientId'
+import { isPatientDetailPath } from '../lib/patientRoutes'
 
 type PickerMode = 'payment' | 'consultation' | null
 type Section = 'billing' | 'consultations'
@@ -29,6 +30,11 @@ export function QuickAddMenu() {
   // directly below this one (in that anchor spot) — shift up to make room,
   // only on that exact page.
   const onPatientOverview = useMatch('/admin/patients/:code')
+  // AdminLayout hides the global mobile tab bar on a patient's own pages —
+  // when it's gone, this menu no longer needs the extra clearance that was
+  // reserved for it.
+  const { pathname } = useLocation()
+  const navHidden = isPatientDetailPath(pathname)
 
   const [open, setOpen] = useState(false)
   const [pickerMode, setPickerMode] = useState<PickerMode>(null)
@@ -71,7 +77,13 @@ export function QuickAddMenu() {
       <div
         ref={ref}
         className={`group fixed right-5 z-20 flex flex-col items-end gap-2 md:right-8 ${
-          onPatientOverview ? 'bottom-[9.25rem] md:bottom-[6.25rem]' : 'bottom-20 md:bottom-8'
+          onPatientOverview
+            ? navHidden
+              ? 'bottom-24 md:bottom-[6.25rem]'
+              : 'bottom-[9.25rem] md:bottom-[6.25rem]'
+            : navHidden
+              ? 'bottom-5 md:bottom-8'
+              : 'bottom-20 md:bottom-8'
         }`}
       >
         <div

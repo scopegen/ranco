@@ -1,8 +1,9 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CircleUserRound, LogOut, Package, Receipt, Stethoscope, UserCog, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../state/AuthContext'
 import { QuickAddMenu } from '../components/QuickAddMenu'
+import { isPatientDetailPath } from '../lib/patientRoutes'
 
 const navItems = [
   { to: '/admin/patients', label: 'Patients', icon: Users, adminOnly: false },
@@ -21,6 +22,8 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 export function AdminLayout() {
   const { staff, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const hideMobileNav = isPatientDetailPath(location.pathname)
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || staff?.role === 'admin')
 
   function handleLogout() {
@@ -85,26 +88,28 @@ export function AdminLayout() {
           </nav>
         </aside>
 
-        <main className="flex-1 pb-20 md:pb-0">
+        <main className={`flex-1 md:pb-0 ${hideMobileNav ? 'pb-0' : 'pb-20'}`}>
           <Outlet />
         </main>
       </div>
 
-      {/* mobile bottom tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-rule bg-white md:hidden">
-        {visibleNavItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={(state) =>
-              `flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors duration-150 ${navLinkClass(state)}`
-            }
-          >
-            <Icon size={20} strokeWidth={2} />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
+      {/* mobile bottom tab bar — hidden inside a patient's own pages */}
+      {!hideMobileNav && (
+        <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-rule bg-white md:hidden">
+          {visibleNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={(state) =>
+                `flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors duration-150 ${navLinkClass(state)}`
+              }
+            >
+              <Icon size={20} strokeWidth={2} />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
 
       <QuickAddMenu />
     </div>
