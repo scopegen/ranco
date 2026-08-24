@@ -136,10 +136,13 @@ class ConsultationOut(BaseModel):
     recommended_service_ids: list[uuid.UUID]
     recommendation_note: str | None
     updated_at: datetime
+    discount_type: Literal["percent", "amount"] | None
+    discount_value: float | None
 
 
-class RecordConsultationPaymentRequest(BaseModel):
-    payment_mode: PaymentMode
+class ConsultationDiscountUpdate(BaseModel):
+    discount_type: Literal["percent", "amount"] | None = None
+    discount_value: float | None = None
 
 
 # ---- Treatment ----
@@ -162,6 +165,11 @@ class TreatmentOut(BaseModel):
     status: TreatmentStatus
     started_at: date
     completed_at: date | None
+    # Snapshot taken when the treatment started — see the model field's
+    # comment. Exposed so the frontend can show "service charge" without a
+    # second lookup, and so it can never drift from what was actually billed
+    # even if the service's catalog price changes later.
+    service_price: float
     discount_type: Literal["percent", "amount"] | None
     discount_value: float | None
 
@@ -180,41 +188,6 @@ class TreatmentDiscountUpdate(BaseModel):
             if self.discount_type == "percent" and self.discount_value > 100:
                 raise ValueError("A percentage discount can't exceed 100.")
         return self
-
-
-class TreatmentPaymentCreate(BaseModel):
-    amount: float
-    payment_mode: PaymentMode
-
-    @model_validator(mode="after")
-    def _validate_amount(self) -> "TreatmentPaymentCreate":
-        if self.amount <= 0:
-            raise ValueError("Payment amount must be greater than zero.")
-        return self
-
-
-class TreatmentPaymentOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
-    treatment_id: uuid.UUID
-    amount: float
-    payment_mode: PaymentMode
-    paid_at: datetime
-    recorded_by: uuid.UUID
-
-
-class TreatmentBillingOut(BaseModel):
-    """Computed billing summary for a treatment — charge comes from the
-    service's listed price (looked up, not stored), reduced by the
-    treatment's discount and whatever's been paid so far."""
-
-    service_price: float
-    discount_type: Literal["percent", "amount"] | None
-    discount_value: float | None
-    discount_amount: float
-    amount_paid: float
-    amount_pending: float
-    payments: list[TreatmentPaymentOut]
 
 
 class TreatmentHandoffCreate(BaseModel):
@@ -268,10 +241,13 @@ class VisitOut(BaseModel):
 
 
 class GenerateInvoiceRequest(BaseModel):
+    """No discount here on purpose — an invoice is a record of the full,
+    listed price of the services it covers. Whatever discount a service
+    carries is a Billing-tab concern, not something the invoice document
+    shows."""
+
     treatment_ids: list[uuid.UUID]
-    payment_mode: PaymentMode | None = None
-    discount_type: Literal["percent", "amount"] | None = None
-    discount_value: float | None = None
+    payment_mode: PaymentMode = PaymentMode.cash
 
     @model_validator(mode="after")
     def _validate(self) -> "GenerateInvoiceRequest":
@@ -279,13 +255,6 @@ class GenerateInvoiceRequest(BaseModel):
             raise ValueError("Select at least one treatment.")
         if len(set(self.treatment_ids)) != len(self.treatment_ids):
             raise ValueError("The same treatment was selected more than once.")
-        if self.discount_type is not None and self.discount_value is None:
-            raise ValueError("discount_value is required when discount_type is set.")
-        if self.discount_value is not None:
-            if self.discount_value < 0:
-                raise ValueError("Discount can't be negative.")
-            if self.discount_type == "percent" and self.discount_value > 100:
-                raise ValueError("A percentage discount can't exceed 100.")
         return self
 
 
@@ -307,6 +276,54 @@ class InvoiceOut(BaseModel):
     issued_at: datetime
     issued_by: uuid.UUID
     lines: list[InvoiceLineOut] = []
+
+
+# ---- Billing (one combined bill per patient — see PatientPayment) ----
+
+
+class PatientPaymentCreate(BaseModel):
+    amount: float
+    payment_mode: PaymentMode
+    # Defaults to now if omitted — settable so staff can record a payment
+    # against a date other than today.
+    paid_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _validate_amount(self) -> "PatientPaymentCreate":
+        if self.amount <= 0:
+            raise ValueError("Payment amount must be greater than zero.")
+        return self
+
+
+class PatientPaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    amount: float
+    payment_mode: PaymentMode
+    paid_at: datetime
+    recorded_by: uuid.UUID
+
+
+class PatientBillingSummary(BaseModel):
+    """total_billed is every consultation fee plus every treatment's charge
+    (service price minus that service's own discount), added the moment
+    each is logged. total_paid folds in every PatientPayment plus, for
+    continuity, whatever was already recorded under the old per-treatment/
+    per-consultation payment tracking before this became one combined
+    bill."""
+
+    total_billed: float
+    total_paid: float
+    total_outstanding: float
+
+
+class BillingHistoryEvent(BaseModel):
+    date: datetime
+    kind: Literal["consultation_billed", "consultation_paid", "treatment_billed", "payment", "invoice"]
+    label: str
+    amount: float
+    mode: PaymentMode | None = None
 
 
 # ---- Prescriptions ----

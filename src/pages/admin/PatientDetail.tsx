@@ -9,7 +9,7 @@ import { calculateAge } from '../../lib/age'
 import { findPatientByCode, formatPatientId } from '../../lib/patientId'
 import { formatDate } from '../../lib/date'
 import { Pill } from '../../components/Pill'
-import type { Consultation, Invoice, PrescriptionEntry, Treatment, TreatmentBilling, Visit } from '../../types/clinical'
+import type { Consultation, Invoice, PatientBillingSummary, PrescriptionEntry, Treatment, Visit } from '../../types/clinical'
 
 type BusyAction = 'view-prescriptions' | 'save-prescriptions' | 'view-history' | null
 
@@ -18,8 +18,11 @@ export interface PatientClinicalData {
   treatments: Treatment[]
   visitsByTreatment: Record<string, Visit[]>
   // Admin-only — never fetched for doctors, since the Billing tab is
-  // completely hidden from them and these endpoints are require_admin anyway.
-  billingByTreatment: Record<string, TreatmentBilling | undefined>
+  // completely hidden from them and this endpoint is require_admin anyway.
+  // The single combined bill for the patient — discounts live on each
+  // Treatment already fetched above, so no per-treatment billing call is
+  // needed anymore.
+  billingSummary: PatientBillingSummary | null
   invoices: Invoice[]
   prescriptions: PrescriptionEntry[]
 }
@@ -103,29 +106,24 @@ export function PatientDetail() {
     if (!patient) return
     const patientId = patient.id
     setLoading(true)
-    const [consultations, treatments, prescriptions, invoices] = await Promise.all([
+    const [consultations, treatments, prescriptions, invoices, billingSummary] = await Promise.all([
       clinicalApi.listConsultations(patientId),
       clinicalApi.listTreatments(patientId),
       clinicalApi.listPrescriptionsForPatient(patientId),
-      // Admin-only endpoint — skip entirely for doctors, who never see the
+      // Admin-only endpoints — skip entirely for doctors, who never see the
       // Billing tab, so a 403 here would otherwise break page load.
       isAdmin ? clinicalApi.listInvoices(patientId) : Promise.resolve([]),
+      isAdmin ? clinicalApi.getBillingSummary(patientId) : Promise.resolve(null),
     ])
 
     const visitsByTreatment: Record<string, Visit[]> = {}
-    const billingByTreatment: Record<string, TreatmentBilling | undefined> = {}
     await Promise.all(
       treatments.map(async (t) => {
-        const [visits, billing] = await Promise.all([
-          clinicalApi.listVisits(t.id),
-          isAdmin ? clinicalApi.getTreatmentBilling(t.id) : Promise.resolve(undefined),
-        ])
-        visitsByTreatment[t.id] = visits
-        billingByTreatment[t.id] = billing
+        visitsByTreatment[t.id] = await clinicalApi.listVisits(t.id)
       }),
     )
 
-    setData({ consultations, treatments, visitsByTreatment, billingByTreatment, invoices, prescriptions })
+    setData({ consultations, treatments, visitsByTreatment, billingSummary, invoices, prescriptions })
     setLoading(false)
   }, [patient, isAdmin])
 

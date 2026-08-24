@@ -282,14 +282,20 @@ def render_history_pdf(
     consultations: list,
     treatments: list,
     visits_by_treatment: dict,
-    treatment_billing_by_id: dict,
+    consultation_charge_by_id: dict,
+    treatment_charge_by_id: dict,
     invoice_by_treatment: dict,
+    billing_totals: tuple,
     prescriptions: list,
 ) -> bytes:
-    """treatment_billing_by_id: treatment_id -> TreatmentBillingOut (service
-    price/discount/paid/pending — the same numbers shown on the Billing tab).
+    """consultation_charge_by_id / treatment_charge_by_id: id -> (fee or
+    service_price, discount_amount, charge) — what this one consultation or
+    treatment contributes to the patient's single combined bill (payment
+    itself isn't tracked per-item anymore).
     invoice_by_treatment: treatment_id -> (Invoice, this treatment's line
-    amount on it), only present for treatments that have been invoiced."""
+    amount on it), only present for treatments that have been invoiced.
+    billing_totals: (total_billed, total_paid) for the whole patient, from
+    the same calculation the Billing tab's summary tiles use."""
 
     def doctor_name(staff_id) -> str:
         s = staff_by_id.get(staff_id)
@@ -300,16 +306,20 @@ def render_history_pdf(
         return s.name if s else "Unknown"
 
     # ---- Consultations ----
-    consult_rows = "".join(
-        f"""<tr>
+    consult_row_list = []
+    for c in sorted(consultations, key=lambda c: c.consult_date, reverse=True):
+        _fee, c_discount_amount, c_charge = consultation_charge_by_id.get(c.id, (float(c.fee), 0.0, float(c.fee)))
+        c_discount_note = f" (after &#8377;{c_discount_amount:,.0f} discount)" if c_discount_amount else ""
+        consult_row_list.append(
+            f"""<tr>
           <td>{c.consult_date.strftime('%d %b %Y')}</td>
           <td>{_esc(doctor_name(c.doctor_id))}</td>
           <td>{_esc(c.findings)}</td>
-          <td>&#8377;{c.fee:,.0f}</td>
+          <td>&#8377;{c_charge:,.0f}{c_discount_note}</td>
           <td><span class="pill {'pill-paid' if c.payment_status.value == 'paid' else 'pill-unpaid'}">{c.payment_status.value}</span></td>
         </tr>"""
-        for c in sorted(consultations, key=lambda c: c.consult_date, reverse=True)
-    )
+        )
+    consult_rows = "".join(consult_row_list)
     consult_section = f"""
     <p class="section-title">Consultations</p>
     <table class="rows">
@@ -320,25 +330,18 @@ def render_history_pdf(
 
     # ---- Treatments &amp; visits ----
     treatment_blocks = []
-    total_billed = 0.0
-    total_collected = 0.0
     for t in sorted(treatments, key=lambda t: t.started_at, reverse=True):
         visits = visits_by_treatment.get(t.id, [])
         # Visits are an activity log only now — no per-visit price/status;
         # a treatment is billed once, as a whole (see billing_html below).
         visit_rows = "".join(f"<tr><td>{v.visit_date.strftime('%d %b %Y')}</td></tr>" for v in visits)
 
-        billing = treatment_billing_by_id.get(t.id)
-        billing_html = ""
-        if billing:
-            charge = billing.service_price - billing.discount_amount
-            total_billed += charge
-            total_collected += billing.amount_paid
-            billing_html = (
-                f'<p style="font-size:9.5pt;"><span class="label">Billing:</span> '
-                f"&#8377;{charge:,.0f} charged, &#8377;{billing.amount_paid:,.0f} paid, "
-                f"&#8377;{billing.amount_pending:,.0f} pending</p>"
-            )
+        _service_price, discount_amount, charge = treatment_charge_by_id.get(t.id, (0.0, 0.0, 0.0))
+        discount_note = f" (after &#8377;{discount_amount:,.0f} discount)" if discount_amount else ""
+        billing_html = (
+            f'<p style="font-size:9.5pt;"><span class="label">Charge:</span> '
+            f"&#8377;{charge:,.0f}{discount_note}</p>"
+        )
 
         invoice_line = invoice_by_treatment.get(t.id)
         invoice_html = ""
@@ -369,12 +372,8 @@ def render_history_pdf(
     {"".join(treatment_blocks) or '<p style="color:#8894a3;">None recorded.</p>'}
     """
 
-    # ---- Consultation fees roll into billing too ----
-    for c in consultations:
-        total_billed += float(c.fee)
-        if c.payment_status.value == "paid":
-            total_collected += float(c.fee)
-    outstanding = total_billed - total_collected
+    total_billed, total_collected = billing_totals
+    outstanding = max(0.0, total_billed - total_collected)
 
     billing_section = f"""
     <p class="section-title">Billing Summary</p>

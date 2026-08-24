@@ -6,19 +6,32 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_staff, require_admin
 from app.database import get_db
-from app.models import Consultation, Service, Staff, Treatment, TreatmentHandoff, TreatmentPayment
+from app.models import Consultation, Service, Staff, Treatment, TreatmentHandoff
 from app.schemas import (
-    TreatmentBillingOut,
     TreatmentCreate,
     TreatmentDiscountUpdate,
     TreatmentHandoffCreate,
     TreatmentHandoffOut,
     TreatmentOut,
-    TreatmentPaymentCreate,
-    TreatmentPaymentOut,
 )
 
 router = APIRouter(tags=["treatments"])
+
+
+def _treatment_charge(treatment: Treatment) -> tuple[float, float, float]:
+    """(service_price, discount_amount, charge) — charge is what this one
+    treatment contributes to the patient's combined bill. service_price is
+    the snapshot taken when the treatment started (see the model field),
+    never re-derived from the service catalog."""
+    service_price = float(treatment.service_price)
+    discount_amount = 0.0
+    if treatment.discount_type and treatment.discount_value:
+        if treatment.discount_type == "percent":
+            discount_amount = service_price * (float(treatment.discount_value) / 100)
+        else:
+            discount_amount = float(treatment.discount_value)
+        discount_amount = min(discount_amount, service_price)
+    return service_price, discount_amount, service_price - discount_amount
 
 
 @router.post("/consultations/{consultation_id}/treatments", response_model=TreatmentOut, status_code=status.HTTP_201_CREATED)
@@ -57,7 +70,9 @@ def start_treatment(
         doctor_id=payload.doctor_id,
         started_at=payload.started_at,
         # Snapshot today's catalog price — see the comment on the model
-        # field for why this must not be a live lookup.
+        # field for why this must not be a live lookup. This amount is
+        # added to the patient's combined bill immediately, the moment the
+        # treatment is logged — billing doesn't wait for anything else.
         service_price=service.listed_price,
     )
     db.add(treatment)
@@ -98,59 +113,15 @@ def handoff_treatment(
     return handoff
 
 
-def _billing_summary(db: Session, treatment: Treatment) -> TreatmentBillingOut:
-    # The price the patient was actually quoted, locked in when the
-    # treatment started — never re-derived from the (possibly since
-    # changed) service catalog. See Treatment.service_price.
-    service_price = float(treatment.service_price)
-
-    discount_amount = 0.0
-    if treatment.discount_type and treatment.discount_value:
-        if treatment.discount_type == "percent":
-            discount_amount = service_price * (float(treatment.discount_value) / 100)
-        else:
-            discount_amount = float(treatment.discount_value)
-        discount_amount = min(discount_amount, service_price)
-
-    payments = list(
-        db.scalars(
-            select(TreatmentPayment)
-            .where(TreatmentPayment.treatment_id == treatment.id)
-            .order_by(TreatmentPayment.paid_at.desc())
-        )
-    )
-    amount_paid = sum(float(p.amount) for p in payments)
-    amount_pending = max(0.0, service_price - discount_amount - amount_paid)
-
-    return TreatmentBillingOut(
-        service_price=service_price,
-        discount_type=treatment.discount_type,
-        discount_value=float(treatment.discount_value) if treatment.discount_value is not None else None,
-        discount_amount=discount_amount,
-        amount_paid=amount_paid,
-        amount_pending=amount_pending,
-        payments=payments,
-    )
-
-
-@router.get("/treatments/{treatment_id}/billing", response_model=TreatmentBillingOut)
-def get_treatment_billing(
-    treatment_id: uuid.UUID, db: Session = Depends(get_db), _admin: Staff = Depends(require_admin)
-):
-    """Admin-only — doctors have no path to any billing data for a treatment."""
-    treatment = db.get(Treatment, treatment_id)
-    if treatment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
-    return _billing_summary(db, treatment)
-
-
-@router.patch("/treatments/{treatment_id}/discount", response_model=TreatmentBillingOut)
+@router.patch("/treatments/{treatment_id}/discount", response_model=TreatmentOut)
 def update_treatment_discount(
     treatment_id: uuid.UUID,
     payload: TreatmentDiscountUpdate,
     db: Session = Depends(get_db),
     _admin: Staff = Depends(require_admin),
 ):
+    """Admin-only — discounts stay a per-service concern even though payment
+    itself is now tracked on the patient's combined bill, not per-service."""
     treatment = db.get(Treatment, treatment_id)
     if treatment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
@@ -158,28 +129,4 @@ def update_treatment_discount(
     treatment.discount_value = payload.discount_value
     db.commit()
     db.refresh(treatment)
-    return _billing_summary(db, treatment)
-
-
-@router.post(
-    "/treatments/{treatment_id}/payments", response_model=TreatmentBillingOut, status_code=status.HTTP_201_CREATED
-)
-def record_treatment_payment(
-    treatment_id: uuid.UUID,
-    payload: TreatmentPaymentCreate,
-    db: Session = Depends(get_db),
-    admin: Staff = Depends(require_admin),
-):
-    treatment = db.get(Treatment, treatment_id)
-    if treatment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
-
-    payment = TreatmentPayment(
-        treatment_id=treatment_id,
-        amount=payload.amount,
-        payment_mode=payload.payment_mode,
-        recorded_by=admin.id,
-    )
-    db.add(payment)
-    db.commit()
-    return _billing_summary(db, treatment)
+    return treatment

@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from app.config import settings
 from app.routers import (
     auth,
+    billing,
     consultations,
     documents,
     invoices,
@@ -38,6 +39,7 @@ app.include_router(consultations.router)
 app.include_router(treatments.router)
 app.include_router(visits.router)
 app.include_router(invoices.router)
+app.include_router(billing.router)
 app.include_router(prescriptions.router)
 app.include_router(documents.router)
 

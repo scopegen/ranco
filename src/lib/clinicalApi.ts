@@ -1,8 +1,11 @@
 import { api, savePdf, viewPdf } from './api'
 import type { Patient } from '../state/PatientsContext'
 import type {
+  BillingHistoryEvent,
   Consultation,
   Invoice,
+  PatientBillingSummary,
+  PatientPayment,
   PaymentMode,
   PaymentStatus,
   PrescriptionEntry,
@@ -10,9 +13,7 @@ import type {
   ServiceType,
   Staff,
   Treatment,
-  TreatmentBilling,
   TreatmentHandoff,
-  TreatmentPayment,
   Visit,
 } from '../types/clinical'
 
@@ -68,6 +69,8 @@ interface RawConsultation {
   recommended_service_ids: string[]
   recommendation_note: string | null
   updated_at: string
+  discount_type: 'percent' | 'amount' | null
+  discount_value: number | null
 }
 
 interface RawTreatment {
@@ -79,27 +82,32 @@ interface RawTreatment {
   status: 'ongoing' | 'finished'
   started_at: string
   completed_at: string | null
+  service_price: number
   discount_type: 'percent' | 'amount' | null
   discount_value: number | null
 }
 
-interface RawTreatmentPayment {
+interface RawPatientPayment {
   id: string
-  treatment_id: string
+  patient_id: string
   amount: number
   payment_mode: PaymentMode
   paid_at: string
   recorded_by: string
 }
 
-interface RawTreatmentBilling {
-  service_price: number
-  discount_type: 'percent' | 'amount' | null
-  discount_value: number | null
-  discount_amount: number
-  amount_paid: number
-  amount_pending: number
-  payments: RawTreatmentPayment[]
+interface RawPatientBillingSummary {
+  total_billed: number
+  total_paid: number
+  total_outstanding: number
+}
+
+interface RawBillingHistoryEvent {
+  date: string
+  kind: BillingHistoryEvent['kind']
+  label: string
+  amount: number
+  mode: PaymentMode | null
 }
 
 interface RawTreatmentHandoff {
@@ -215,6 +223,8 @@ const toConsultation = (r: RawConsultation): Consultation => ({
   recommendedServiceIds: r.recommended_service_ids,
   recommendationNote: r.recommendation_note ?? undefined,
   updatedAt: r.updated_at,
+  discountType: r.discount_type,
+  discountValue: r.discount_value,
 })
 
 const toTreatment = (r: RawTreatment): Treatment => ({
@@ -226,27 +236,32 @@ const toTreatment = (r: RawTreatment): Treatment => ({
   status: r.status,
   startedAt: r.started_at,
   completedAt: r.completed_at ?? undefined,
+  servicePrice: r.service_price,
   discountType: r.discount_type,
   discountValue: r.discount_value,
 })
 
-const toTreatmentPayment = (r: RawTreatmentPayment): TreatmentPayment => ({
+const toPatientPayment = (r: RawPatientPayment): PatientPayment => ({
   id: r.id,
-  treatmentId: r.treatment_id,
+  patientId: r.patient_id,
   amount: r.amount,
   paymentMode: r.payment_mode,
   paidAt: r.paid_at,
   recordedBy: r.recorded_by,
 })
 
-const toTreatmentBilling = (r: RawTreatmentBilling): TreatmentBilling => ({
-  servicePrice: r.service_price,
-  discountType: r.discount_type,
-  discountValue: r.discount_value,
-  discountAmount: r.discount_amount,
-  amountPaid: r.amount_paid,
-  amountPending: r.amount_pending,
-  payments: r.payments.map(toTreatmentPayment),
+const toBillingSummary = (r: RawPatientBillingSummary): PatientBillingSummary => ({
+  totalBilled: r.total_billed,
+  totalPaid: r.total_paid,
+  totalOutstanding: r.total_outstanding,
+})
+
+const toBillingHistoryEvent = (r: RawBillingHistoryEvent): BillingHistoryEvent => ({
+  date: r.date,
+  kind: r.kind,
+  label: r.label,
+  amount: r.amount,
+  mode: r.mode ?? undefined,
 })
 
 const toHandoff = (r: RawTreatmentHandoff): TreatmentHandoff => ({
@@ -392,10 +407,12 @@ export const clinicalApi = {
     api
       .patch<RawConsultation>(`/patients/${patientId}/consultations/${consultationId}`, input)
       .then(toConsultation),
-  recordConsultationPayment: (patientId: string, consultationId: string, input: { payment_mode: PaymentMode }) =>
-    api
-      .patch<RawConsultation>(`/patients/${patientId}/consultations/${consultationId}/payment`, input)
-      .then(toConsultation),
+  // Discounts stay a per-service concern even though payment is tracked on
+  // the patient's combined bill — same mechanism as a treatment's discount.
+  updateConsultationDiscount: (
+    consultationId: string,
+    input: { discount_type: 'percent' | 'amount' | null; discount_value: number | null },
+  ) => api.patch<RawConsultation>(`/consultations/${consultationId}/discount`, input).then(toConsultation),
 
   // treatments
   listTreatments: (patientId: string) =>
@@ -406,14 +423,12 @@ export const clinicalApi = {
   ) => api.post<RawTreatment>(`/consultations/${consultationId}/treatments`, input).then(toTreatment),
   handoffTreatment: (treatmentId: string, input: { to_doctor_id: string; reason?: string }) =>
     api.post<RawTreatmentHandoff>(`/treatments/${treatmentId}/handoff`, input).then(toHandoff),
-  getTreatmentBilling: (treatmentId: string) =>
-    api.get<RawTreatmentBilling>(`/treatments/${treatmentId}/billing`).then(toTreatmentBilling),
+  // Discounts stay a per-service concern even though payment is now
+  // tracked on the patient's combined bill, not per-treatment.
   updateTreatmentDiscount: (
     treatmentId: string,
     input: { discount_type: 'percent' | 'amount' | null; discount_value: number | null },
-  ) => api.patch<RawTreatmentBilling>(`/treatments/${treatmentId}/discount`, input).then(toTreatmentBilling),
-  createTreatmentPayment: (treatmentId: string, input: { amount: number; payment_mode: PaymentMode }) =>
-    api.post<RawTreatmentBilling>(`/treatments/${treatmentId}/payments`, input).then(toTreatmentBilling),
+  ) => api.patch<RawTreatment>(`/treatments/${treatmentId}/discount`, input).then(toTreatment),
 
   // visits
   listVisits: (treatmentId: string) =>
@@ -421,23 +436,27 @@ export const clinicalApi = {
   logVisit: (treatmentId: string, input: { visit_date: string }) =>
     api.post<RawVisit>(`/treatments/${treatmentId}/visits`, input).then(toVisit),
 
-  // invoices — one invoice can cover several treatments picked together
-  generateInvoice: (
-    patientId: string,
-    treatmentIds: string[],
-    paymentMode: PaymentMode | null,
-    discount?: { type: 'percent' | 'amount'; value: number } | null,
-  ) =>
+  // invoices — one invoice can cover several treatments picked together;
+  // always at full listed price, no discount (see GenerateInvoiceRequest)
+  generateInvoice: (patientId: string, treatmentIds: string[], paymentMode: PaymentMode) =>
     api
       .post<RawInvoice>(`/patients/${patientId}/invoices`, {
         treatment_ids: treatmentIds,
         payment_mode: paymentMode,
-        discount_type: discount?.type,
-        discount_value: discount?.value,
       })
       .then(toInvoice),
   listInvoices: (patientId: string) =>
     api.get<RawInvoice[]>(`/patients/${patientId}/invoices`).then((rs) => rs.map(toInvoice)),
+
+  // billing — one combined bill per patient
+  getBillingSummary: (patientId: string) =>
+    api.get<RawPatientBillingSummary>(`/patients/${patientId}/billing-summary`).then(toBillingSummary),
+  createPatientPayment: (patientId: string, input: { amount: number; payment_mode: PaymentMode; paid_at?: string }) =>
+    api.post<RawPatientPayment>(`/patients/${patientId}/payments`, input).then(toPatientPayment),
+  listPatientPayments: (patientId: string) =>
+    api.get<RawPatientPayment[]>(`/patients/${patientId}/payments`).then((rs) => rs.map(toPatientPayment)),
+  getBillingHistory: (patientId: string) =>
+    api.get<RawBillingHistoryEvent[]>(`/patients/${patientId}/billing-history`).then((rs) => rs.map(toBillingHistoryEvent)),
   viewInvoicePdf: (invoiceId: string) => viewPdf(`/invoices/${invoiceId}/pdf`),
 
   // prescriptions

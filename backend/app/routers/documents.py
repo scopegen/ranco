@@ -8,7 +8,9 @@ from app import pdf
 from app.auth.dependencies import get_current_staff, require_admin
 from app.database import get_db
 from app.models import Consultation, Invoice, InvoiceLine, Patient, PrescriptionEntry, Service, Staff, Treatment, Visit
-from app.routers.treatments import _billing_summary
+from app.routers.billing import _patient_billing_totals
+from app.routers.consultations import _consultation_charge
+from app.routers.treatments import _treatment_charge
 
 router = APIRouter(tags=["documents"])
 
@@ -54,15 +56,17 @@ def download_history_pdf(
     treatments = list(db.scalars(select(Treatment).where(Treatment.patient_id == patient_id)))
     prescriptions = list(db.scalars(select(PrescriptionEntry).where(PrescriptionEntry.patient_id == patient_id)))
 
+    consultation_charge_by_id: dict = {c.id: _consultation_charge(c) for c in consultations}
+
     treatment_ids = [t.id for t in treatments]
     visits_by_treatment: dict = {}
-    treatment_billing_by_id: dict = {}
+    treatment_charge_by_id: dict = {}
     invoice_by_treatment: dict = {}
     if treatment_ids:
         for v in db.scalars(select(Visit).where(Visit.treatment_id.in_(treatment_ids))):
             visits_by_treatment.setdefault(v.treatment_id, []).append(v)
         for t in treatments:
-            treatment_billing_by_id[t.id] = _billing_summary(db, t)
+            treatment_charge_by_id[t.id] = _treatment_charge(t)
         lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.treatment_id.in_(treatment_ids))))
         if lines:
             invoices = {
@@ -89,8 +93,10 @@ def download_history_pdf(
         consultations,
         treatments,
         visits_by_treatment,
-        treatment_billing_by_id,
+        consultation_charge_by_id,
+        treatment_charge_by_id,
         invoice_by_treatment,
+        _patient_billing_totals(db, patient_id),
         prescriptions,
     )
     return _pdf_response(content, f"history-{pdf.patient_id_str(patient.patient_number)}.pdf")
@@ -117,10 +123,12 @@ def download_invoice_pdf(invoice_id: uuid.UUID, db: Session = Depends(get_db), _
     service_by_id = {s.id: s for s in db.scalars(select(Service).where(Service.id.in_(service_ids)))}
     doctor_by_id = {s.id: s for s in db.scalars(select(Staff).where(Staff.id.in_(doctor_ids)))}
 
-    # line.amount is each treatment's pre-discount pending amount at the time
-    # of invoicing — spread the invoice's overall discount across lines the
-    # same proportional way generate_invoice() does, so what prints here is
-    # each service's exact charged amount, not the pre-discount figure.
+    # New invoices never carry a discount (generate_invoice always leaves
+    # discount_total at 0 — see its docstring), so this subtraction is a
+    # no-op for them: line.amount already is the full service price. It's
+    # kept only so older invoices generated before that change — which did
+    # have a real discount_total, spread proportionally across lines —
+    # still print the amount actually settled, not the pre-discount figure.
     listed_total = float(invoice.listed_total)
     discount_total = float(invoice.discount_total)
     pdf_lines = [

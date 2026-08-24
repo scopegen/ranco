@@ -37,6 +37,10 @@ export interface Consultation {
   recommendedServiceIds: string[]
   recommendationNote?: string
   updatedAt: string
+  // Same discount mechanism as Treatment.discountType/discountValue — a
+  // per-service concern that only affects the patient's combined bill.
+  discountType?: 'percent' | 'amount' | null
+  discountValue?: number | null
 }
 
 export interface Treatment {
@@ -48,29 +52,45 @@ export interface Treatment {
   status: TreatmentStatus
   startedAt: string
   completedAt?: string
+  // Snapshot of the service's listed price taken when the treatment started
+  // — what this treatment actually contributes to the patient's combined
+  // bill is derived from this, never from the service's live catalog price.
+  servicePrice: number
   discountType?: 'percent' | 'amount' | null
   discountValue?: number | null
 }
 
-export interface TreatmentPayment {
+// One payment against a patient's single combined bill (every consultation
+// fee + every treatment's charge, added up) — not linked to any specific
+// consultation or treatment.
+export interface PatientPayment {
   id: string
-  treatmentId: string
+  patientId: string
   amount: number
   paymentMode: PaymentMode
   paidAt: string
   recordedBy: string
 }
 
-// Computed on the backend from the treatment's service price, its discount,
-// and the sum of its TreatmentPayment rows — not stored directly.
-export interface TreatmentBilling {
-  servicePrice: number
-  discountType: 'percent' | 'amount' | null
-  discountValue: number | null
-  discountAmount: number
-  amountPaid: number
-  amountPending: number
-  payments: TreatmentPayment[]
+export interface PatientBillingSummary {
+  totalBilled: number
+  totalPaid: number
+  totalOutstanding: number
+}
+
+export type BillingHistoryEventKind =
+  | 'consultation_billed'
+  | 'consultation_paid'
+  | 'treatment_billed'
+  | 'payment'
+  | 'invoice'
+
+export interface BillingHistoryEvent {
+  date: string
+  kind: BillingHistoryEventKind
+  label: string
+  amount: number
+  mode?: PaymentMode
 }
 
 export interface TreatmentHandoff {

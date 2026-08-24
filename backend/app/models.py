@@ -146,6 +146,11 @@ class Consultation(Base):
     recommended_service_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list, nullable=False)
     recommendation_note: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Same discount mechanism as Treatment.discount_type/discount_value below
+    # — a per-service concern that only affects the patient's combined bill,
+    # never shown on any generated document.
+    discount_type: Mapped[str | None] = mapped_column(String(10))
+    discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
 
 
 class Treatment(Base):
@@ -207,9 +212,12 @@ class Visit(Base):
 
 
 class TreatmentPayment(Base):
-    """A single payment toward a treatment's total charge. Multiple rows per
-    treatment support partial/installment payments — a treatment can span
-    several visits over days, unlike a consultation's one-time fee."""
+    """Historical only — a single payment toward one specific treatment's
+    charge, from the era when billing was tracked per-service. Superseded by
+    PatientPayment (one combined bill per patient, not linked to any
+    specific treatment or consultation). Kept, and still summed into a
+    patient's total-paid figure, purely so payments recorded before that
+    change don't vanish from the numbers; nothing writes new rows here."""
 
     __tablename__ = "treatment_payments"
 
@@ -218,6 +226,24 @@ class TreatmentPayment(Base):
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     payment_mode: Mapped[PaymentMode] = mapped_column(Enum(PaymentMode, name="payment_mode"), nullable=False)
     paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    recorded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
+
+
+class PatientPayment(Base):
+    """One payment against a patient's single combined bill (consultation
+    fees + every treatment's charge, added up) — not linked to any specific
+    consultation or treatment. paid_at is admin-settable (not just
+    server-default) since the Add Payment form lets staff record a payment
+    against a date other than today, e.g. entering a payment collected
+    yesterday."""
+
+    __tablename__ = "patient_payments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("patients.id"), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    payment_mode: Mapped[PaymentMode] = mapped_column(Enum(PaymentMode, name="payment_mode"), nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     recorded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
 
 
