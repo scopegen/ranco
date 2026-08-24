@@ -1,5 +1,4 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { StyleGuide } from './pages/StyleGuide'
 import { AdminLayout } from './layouts/AdminLayout'
@@ -22,8 +21,7 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Login />} />
         <Route path="/style-guide" element={<StyleGuide />} />
 
         <Route
@@ -38,8 +36,7 @@ function App() {
             </RequireAuth>
           }
         >
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
+          <Route index element={<Dashboard />} />
           <Route path="patients" element={<PatientList />} />
           <Route path="patients/new" element={<NewPatient />} />
           <Route path="patients/:code/edit" element={<NewPatient />} />

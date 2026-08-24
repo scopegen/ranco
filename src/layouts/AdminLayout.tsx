@@ -25,7 +25,7 @@ export function AdminLayout() {
 
   function handleLogout() {
     logout()
-    navigate('/login')
+    navigate('/')
   }
 
   return (
@@ -113,7 +113,7 @@ export function AdminLayout() {
 
 function Brand(): ReactNode {
   return (
-    <Link to="/admin/dashboard" aria-label="Go to dashboard" title="Dashboard">
+    <Link to="/admin" aria-label="Go to dashboard" title="Dashboard">
       <img src="/images/Ranco-logo-new.webp" alt="Ranco Dental Clinic" className="h-[52px] w-auto" />
     </Link>
   )

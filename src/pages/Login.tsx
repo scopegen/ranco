@@ -1,17 +1,24 @@
 import { useState, type SubmitEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Field } from '../components/Field'
 import { useAuth } from '../state/AuthContext'
 import { ApiError } from '../lib/api'
 
 export function Login() {
-  const { login } = useAuth()
+  const { staff, loading, login } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Already signed in and landing on / directly (e.g. a stale tab, or
+  // browser autofill of the root URL) — go straight to the dashboard
+  // instead of showing the form again.
+  if (!loading && staff) {
+    return <Navigate to="/admin" replace />
+  }
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
