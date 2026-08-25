@@ -234,12 +234,12 @@ function AddPaymentModal({
 
         {error && <p className="text-[13px] text-crit">{error}</p>}
 
-        <div className="flex gap-3">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? 'Saving…' : 'Save payment'}
-          </Button>
+        <div className="flex justify-end gap-3">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
+          </Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Saving…' : 'Save payment'}
           </Button>
         </div>
       </form>
