@@ -17,8 +17,6 @@ export interface Patient {
   gender: 'male' | 'female' | 'other' | null
   height: string
   weight: string
-  emergencyContactName: string
-  emergencyContactPhone: string
   medicalConditions: string[]
   medicalHistory: string
   registeredAt: string
@@ -49,8 +47,6 @@ function toApiPayload(patient: PatientDraft) {
     gender: patient.gender ?? undefined,
     height: patient.height ? Number(patient.height) : undefined,
     weight: patient.weight ? Number(patient.weight) : undefined,
-    emergency_contact_name: patient.emergencyContactName || undefined,
-    emergency_contact_phone: patient.emergencyContactPhone || undefined,
     medical_conditions: patient.medicalConditions,
     medical_history: patient.medicalHistory || undefined,
   }

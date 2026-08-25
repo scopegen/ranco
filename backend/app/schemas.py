@@ -55,8 +55,6 @@ class PatientCreate(BaseModel):
     gender: Gender | None = None
     height: float | None = None
     weight: float | None = None
-    emergency_contact_name: str | None = None
-    emergency_contact_phone: str | None = None
     medical_conditions: list[str] = []
     medical_history: str | None = None
 
@@ -81,8 +79,6 @@ class PatientOut(BaseModel):
     gender: Gender | None
     height: float | None
     weight: float | None
-    emergency_contact_name: str | None
-    emergency_contact_phone: str | None
     medical_conditions: list[str]
     medical_history: str | None
     added_by: uuid.UUID

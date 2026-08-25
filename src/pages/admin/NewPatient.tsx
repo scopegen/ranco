@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type SubmitEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '../../components/Button'
 import { ComboField, Field, ReadOnlyField, TextareaField } from '../../components/Field'
 import { calculateAge } from '../../lib/age'
@@ -25,8 +25,6 @@ interface PatientDraft {
   gender: Gender | null
   height: string
   weight: string
-  emergencyContactName: string
-  emergencyContactPhone: string
   medicalConditions: string[]
   medicalHistory: string
 }
@@ -44,8 +42,6 @@ const emptyDraft: PatientDraft = {
   gender: null,
   height: '',
   weight: '',
-  emergencyContactName: '',
-  emergencyContactPhone: '',
   medicalConditions: [],
   medicalHistory: '',
 }
@@ -98,8 +94,6 @@ function toDraft(patient: Patient): PatientDraft {
     gender: patient.gender,
     height: patient.height,
     weight: patient.weight,
-    emergencyContactName: patient.emergencyContactName,
-    emergencyContactPhone: patient.emergencyContactPhone,
     medicalConditions: patient.medicalConditions,
     medicalHistory: patient.medicalHistory,
   }
@@ -134,9 +128,16 @@ export function NewPatient() {
   useEffect(() => {
     if (editingPatient) {
       setDraft(toDraft(editingPatient))
-      // Don't hide height/weight the patient already has on file behind an
-      // extra click — only new/blank entries start collapsed.
-      if (editingPatient.height || editingPatient.weight) setShowPhysicalDetails(true)
+      // Don't hide data the patient already has on file behind an extra
+      // click — only new/blank entries start collapsed.
+      if (
+        editingPatient.height ||
+        editingPatient.weight ||
+        editingPatient.medicalConditions.length > 0 ||
+        editingPatient.medicalHistory
+      ) {
+        setShowPhysicalDetails(true)
+      }
     }
   }, [editingPatient])
 
@@ -174,8 +175,6 @@ export function NewPatient() {
       gender: draft.gender,
       height: draft.height,
       weight: draft.weight,
-      emergencyContactName: draft.emergencyContactName,
-      emergencyContactPhone: draft.emergencyContactPhone,
       medicalConditions: draft.medicalConditions,
       medicalHistory: draft.medicalHistory,
     }
@@ -403,79 +402,66 @@ export function NewPatient() {
 
         <div className="flex flex-col gap-5">
           <div className="flex items-center justify-between gap-3 border-b border-rule pb-2">
-            <h2 className="text-subheading font-medium text-ink">Physical details</h2>
-            <Button type="button" variant="ghost" onClick={() => setShowPhysicalDetails((v) => !v)}>
+            <h2 className="text-subheading font-medium text-ink">Physical &amp; medical details</h2>
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex items-center gap-1.5"
+              onClick={() => setShowPhysicalDetails((v) => !v)}
+            >
               {showPhysicalDetails ? 'Show less' : 'Show more'}
+              {showPhysicalDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </Button>
           </div>
           {showPhysicalDetails && (
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <Field
-                label="Height"
-                type="number"
-                min="0"
-                value={draft.height}
-                onChange={(e) => update('height', e.target.value)}
-                placeholder="165 cm"
-              />
-              <Field
-                label="Weight"
-                type="number"
-                min="0"
-                value={draft.weight}
-                onChange={(e) => update('weight', e.target.value)}
-                placeholder="62 kg"
+            <div className="flex flex-col gap-5">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <Field
+                  label="Height"
+                  type="number"
+                  min="0"
+                  value={draft.height}
+                  onChange={(e) => update('height', e.target.value)}
+                  placeholder="165 cm"
+                />
+                <Field
+                  label="Weight"
+                  type="number"
+                  min="0"
+                  value={draft.weight}
+                  onChange={(e) => update('weight', e.target.value)}
+                  placeholder="62 kg"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-body font-medium text-ink">Medical conditions</span>
+                </div>
+                <div className="grid grid-cols-1 gap-2.5 rounded-lg border border-rule bg-paper-raised p-4 sm:grid-cols-2">
+                  {conditionOptions.map((condition) => (
+                    <label key={condition} className="flex items-start gap-2 text-body text-ink">
+                      <input
+                        type="checkbox"
+                        checked={draft.medicalConditions.includes(condition)}
+                        onChange={() => toggleCondition(condition)}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+                      />
+                      {condition}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <TextareaField
+                label="Medical history"
+                value={draft.medicalHistory}
+                onChange={(e) => update('medicalHistory', e.target.value)}
+                placeholder=""
               />
             </div>
           )}
         </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-body font-medium text-ink">Emergency contact</span>
-          </div>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field
-              label="Name"
-              value={draft.emergencyContactName}
-              onChange={(e) => update('emergencyContactName', e.target.value)}
-              placeholder="Contact's name"
-            />
-            <Field
-              label="Contact number"
-              type="tel"
-              value={draft.emergencyContactPhone}
-              onChange={(e) => update('emergencyContactPhone', e.target.value)}
-              placeholder="98765 43210"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-body font-medium text-ink">Medical conditions</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2.5 rounded-lg border border-rule bg-paper-raised p-4 sm:grid-cols-2">
-            {conditionOptions.map((condition) => (
-              <label key={condition} className="flex items-start gap-2 text-body text-ink">
-                <input
-                  type="checkbox"
-                  checked={draft.medicalConditions.includes(condition)}
-                  onChange={() => toggleCondition(condition)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
-                />
-                {condition}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <TextareaField
-          label="Medical history"
-          value={draft.medicalHistory}
-          onChange={(e) => update('medicalHistory', e.target.value)}
-          placeholder=""
-        />
 
         <div className="flex items-center gap-3 pt-2">
           <Button type="submit" disabled={submitting}>

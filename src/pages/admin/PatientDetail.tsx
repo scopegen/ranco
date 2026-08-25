@@ -213,8 +213,6 @@ export function PatientDetail() {
               <InfoRow label="Height" value={patient.height ? `${patient.height} cm` : '— cm'} />
               <InfoRow label="Weight" value={patient.weight ? `${patient.weight} kg` : '— kg'} />
               <InfoRow label="Date Added" value={formatDate(patient.registeredAt)} />
-              <InfoRow label="Emergency Contact — Name" value={patient.emergencyContactName || '—'} />
-              <InfoRow label="Emergency Contact — Number" value={patient.emergencyContactPhone || '—'} />
             </div>
           </header>
         ) : (
