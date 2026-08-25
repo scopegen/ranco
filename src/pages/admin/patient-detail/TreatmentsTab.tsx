@@ -246,7 +246,7 @@ function TreatmentCard({
         {treatment.status === 'ongoing' && (
           <div className="flex flex-col gap-4 border-t border-rule pt-4">
             {!visitFormOpen && (
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
                 <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
                   + Log visit
                 </Button>
@@ -353,12 +353,12 @@ function LogVisitForm({
         </div>
       )}
 
-      <div className="flex gap-3">
-        <Button type="submit" disabled={submitting}>
-          {submitting ? 'Saving…' : 'Log visit'}
-        </Button>
+      <div className="flex justify-end gap-3">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
+        </Button>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? 'Saving…' : 'Log visit'}
         </Button>
       </div>
     </form>
