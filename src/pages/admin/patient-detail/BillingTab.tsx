@@ -3,7 +3,6 @@ import { Pencil, X } from 'lucide-react'
 import { useClinic } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate, formatDateTime } from '../../../lib/date'
-import { PaymentStatusPill } from '../../../components/PaymentStatusPill'
 import { Pill } from '../../../components/Pill'
 import { Button } from '../../../components/Button'
 import { Field, SelectField } from '../../../components/Field'
@@ -574,14 +573,12 @@ function InvoiceRow({
 function CardHeader({
   label,
   date,
-  paid,
   discountLabel,
   expanded,
   onToggle,
 }: {
   label: string
   date: string
-  paid: boolean
   // e.g. "10% off" / "₹100 off" — omitted entirely when there's no discount.
   discountLabel?: string
   expanded: boolean
@@ -595,7 +592,6 @@ function CardHeader({
       </div>
       <div className="flex items-center gap-3">
         {discountLabel && <Pill variant="accent">{discountLabel}</Pill>}
-        <PaymentStatusPill status={paid ? 'paid' : 'unpaid'} />
         <button
           type="button"
           onClick={onToggle}
@@ -627,7 +623,6 @@ function ConsultationBillingCard({
   const { updateConsultationDiscount } = useClinic()
   const [expanded, setExpanded] = useState(false)
   const [discountFormOpen, setDiscountFormOpen] = useState(false)
-  const isPaid = consultation.paymentStatus === 'paid'
   const { fee, discountAmount, charge } = consultationCharge(consultation)
 
   return (
@@ -635,7 +630,6 @@ function ConsultationBillingCard({
       <CardHeader
         label="Consultation"
         date={consultation.consultDate}
-        paid={isPaid}
         discountLabel={discountLabel(consultation.discountType, consultation.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
@@ -680,12 +674,6 @@ function ConsultationBillingCard({
               {consultation.discountType ? 'Edit discount' : '+ Add discount'}
             </Button>
           )}
-
-          {isPaid && consultation.paidAt && (
-            <p className="text-[12px] text-ink-faint">
-              Paid {formatDateTime(consultation.paidAt)} via {(consultation.paymentMode ?? '').toUpperCase()}
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -717,7 +705,6 @@ function TreatmentBillingCard({
       <CardHeader
         label={serviceLabel}
         date={treatment.startedAt}
-        paid={Boolean(invoice)}
         discountLabel={discountLabel(treatment.discountType, treatment.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
