@@ -178,7 +178,6 @@ function ServiceForm({
         <Field label="Name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Molar RCT" />
         <SelectField
           label="Category"
-          hint="add this as a sub-service under an existing category, or start a new one"
           options={categoryOptions}
           value={categoryChoice}
           onChange={(e) => setCategoryChoice(e.target.value)}
@@ -196,7 +195,6 @@ function ServiceForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <SelectField
           label="Type"
-          hint="performed in-clinic, or fulfilled by an external lab"
           options={['Dental', 'Lab']}
           value={serviceTypeLabel}
           onChange={(e) => setServiceTypeLabel(e.target.value)}
