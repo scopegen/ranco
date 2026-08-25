@@ -203,7 +203,7 @@ function ServiceForm({
       </div>
       <label className="flex items-center gap-2 text-body text-ink">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 accent-accent" />
-        Active — shown when starting a treatment
+        Active
       </label>
       <div className="flex gap-3">
         <Button type="submit" disabled={submitting}>
