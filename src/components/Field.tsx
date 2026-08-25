@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 const controlClass =
   'w-full rounded-lg border border-rule bg-white px-3.5 py-2.5 text-body text-ink placeholder:text-ink-faint ' +
@@ -66,11 +66,35 @@ export function SelectField({ label, required, hint, options, className = '', ..
   )
 }
 
+interface ComboFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+  label: string
+  hint?: string
+  options: readonly string[]
+}
+
+/** A real dropdown that also accepts free typing — native <input list>, no
+ * custom JS combobox needed. Pick one of `options`, or just type something
+ * else; nothing stops a value outside the list. */
+export function ComboField({ label, required, hint, options, className = '', ...props }: ComboFieldProps) {
+  const listId = useId()
+  return (
+    <label className="flex flex-col gap-1.5">
+      <Label label={label} required={required} hint={hint} />
+      <input list={listId} required={required} className={`${controlClass} ${className}`} {...props} />
+      <datalist id={listId}>
+        {options.map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
+    </label>
+  )
+}
+
 export function ReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label label={label} />
-      <div className={`${controlClass} bg-paper-raised text-ink-soft`}>{value}</div>
+      <div className={`${controlClass} border-accent bg-accent-tint text-accent-deep`}>{value}</div>
     </div>
   )
 }

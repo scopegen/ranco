@@ -87,7 +87,12 @@ class Patient(Base):
     patient_number: Mapped[int] = mapped_column(Identity(), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
-    address: Mapped[str] = mapped_column(Text, nullable=False)
+    # Replaced the old single free-text `address` field — city has a fixed
+    # dropdown of nearby areas on the frontend (with free typing for
+    # anything else), sector doesn't (no fixed list makes sense for it), so
+    # its dropdown there is populated from sectors already in use instead.
+    city: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    sector: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     # Exactly one of these two is set, enforced in the Pydantic schema:
     # dob when the full date of birth is known, birth_year when only the
     # year (or an age, converted to a year on the frontend) is known.

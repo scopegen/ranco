@@ -182,7 +182,7 @@ def _patient_info_html(patient) -> str:
         <td><span class="label">Phone:</span> {_esc(patient.phone)}</td>
       </tr>
       <tr>
-        <td colspan="2"><span class="label">Address:</span> {_esc(patient.address)}</td>
+        <td colspan="2"><span class="label">Address:</span> {_esc(', '.join(p for p in [patient.sector, patient.city] if p))}</td>
       </tr>
     </table>
     """

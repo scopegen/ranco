@@ -43,7 +43,8 @@ class TokenResponse(BaseModel):
 class PatientCreate(BaseModel):
     name: str
     phone: str
-    address: str
+    city: str = ""
+    sector: str = ""
     # Exactly one of these is expected from the frontend, depending on which
     # entry mode the user picked (full DOB / age / birth year only) — age
     # itself is never sent here, the frontend converts it to birth_year
@@ -72,7 +73,8 @@ class PatientOut(BaseModel):
     patient_number: int
     name: str
     phone: str
-    address: str
+    city: str
+    sector: str
     dob: date | None
     birth_year: int | None
     email: str | None

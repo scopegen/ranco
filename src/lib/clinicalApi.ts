@@ -32,7 +32,8 @@ interface RawPatient {
   patient_number: number
   name: string
   phone: string
-  address: string
+  city: string
+  sector: string
   dob: string | null
   birth_year: number | null
   email: string | null
@@ -187,7 +188,8 @@ const toPatient = (r: RawPatient): Patient => ({
   patientNumber: r.patient_number,
   name: r.name,
   phone: r.phone,
-  address: r.address,
+  city: r.city,
+  sector: r.sector,
   dob: r.dob,
   birthYear: r.birth_year,
   email: r.email ?? '',
@@ -330,10 +332,12 @@ export const clinicalApi = {
   // patients
   listPatients: () => api.get<RawPatient[]>('/patients').then((rs) => rs.map(toPatient)),
   listMedicalConditions: () => api.get<string[]>('/patients/medical-conditions'),
+  listSectors: () => api.get<string[]>('/patients/sectors'),
   createPatient: (input: {
     name: string
     phone: string
-    address: string
+    city: string
+    sector: string
     dob?: string
     birth_year?: number
     email?: string
@@ -351,7 +355,8 @@ export const clinicalApi = {
     input: {
       name: string
       phone: string
-      address: string
+      city: string
+      sector: string
       dob?: string
       birth_year?: number
       email?: string

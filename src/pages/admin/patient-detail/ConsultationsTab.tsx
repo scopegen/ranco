@@ -292,7 +292,6 @@ function NewConsultationForm({
 
       <TextareaField
         label="Additional recommendation"
-        hint="optional"
         value={recommendationNote}
         onChange={(e) => setRecommendationNote(e.target.value)}
         placeholder=""
@@ -433,7 +432,6 @@ function EditConsultationForm({
 
       <TextareaField
         label="Additional recommendation"
-        hint="optional"
         value={recommendationNote}
         onChange={(e) => setRecommendationNote(e.target.value)}
         placeholder="e.g. Refer to orthodontist for bite evaluation"

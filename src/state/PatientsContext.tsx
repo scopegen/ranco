@@ -7,7 +7,8 @@ export interface Patient {
   patientNumber: number
   name: string
   phone: string
-  address: string
+  city: string
+  sector: string
   // Exactly one of these is set, depending on how the patient's birth info
   // was entered (full date of birth / age / birth year only).
   dob: string | null
@@ -40,7 +41,8 @@ function toApiPayload(patient: PatientDraft) {
   return {
     name: patient.name,
     phone: patient.phone,
-    address: patient.address,
+    city: patient.city,
+    sector: patient.sector,
     dob: patient.dob ?? undefined,
     birth_year: patient.birthYear ?? undefined,
     email: patient.email || undefined,

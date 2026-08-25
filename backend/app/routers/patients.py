@@ -17,6 +17,17 @@ def list_medical_conditions(_current: Staff = Depends(get_current_staff)):
     return MEDICAL_CONDITIONS
 
 
+@router.get("/sectors", response_model=list[str])
+def list_sectors(db: Session = Depends(get_db), _current: Staff = Depends(get_current_staff)):
+    """No fixed list makes sense for sector (unlike city) — this grows from
+    whatever's actually been entered so far, same "pick one or type your
+    own" combo box on the frontend."""
+    sectors = db.scalars(
+        select(Patient.sector).where(Patient.sector != "").distinct().order_by(Patient.sector)
+    ).all()
+    return list(sectors)
+
+
 @router.post("", response_model=PatientOut, status_code=status.HTTP_201_CREATED)
 def create_patient(payload: PatientCreate, db: Session = Depends(get_db), current: Staff = Depends(get_current_staff)):
     patient = Patient(**payload.model_dump(), added_by=current.id)

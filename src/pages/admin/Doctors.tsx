@@ -88,7 +88,7 @@ function AddDoctorForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Full name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Dr. Priya Nair" />
-        <Field label="Specialty" hint="optional" value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="Orthodontist" />
+        <Field label="Specialty" value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="Orthodontist" />
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="drnair@rancodental.com" />

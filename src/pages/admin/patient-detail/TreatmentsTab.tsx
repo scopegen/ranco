@@ -340,7 +340,7 @@ function LogVisitForm({
 
       {addRx && (
         <div className="flex flex-col gap-4 rounded-lg bg-white p-4">
-          <Field label="Diagnosis" hint="optional" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="e.g. Deep caries, tooth 36" />
+          <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="e.g. Deep caries, tooth 36" />
           <TextareaField
             label="Rx"
             required
@@ -348,8 +348,8 @@ function LogVisitForm({
             onChange={(e) => setRxNotes(e.target.value)}
             placeholder={'One medicine per line, e.g.\nAmoxicillin 500mg — 1-0-1 — 5 days\nIbuprofen 400mg — as needed for pain'}
           />
-          <Field label="Advice" hint="optional" value={advice} onChange={(e) => setAdvice(e.target.value)} placeholder="e.g. Avoid hot/cold food for 2 days" />
-          <Field label="Next visit" hint="optional" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} placeholder="e.g. After 5 days" />
+          <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} placeholder="e.g. Avoid hot/cold food for 2 days" />
+          <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} placeholder="e.g. After 5 days" />
         </div>
       )}
 

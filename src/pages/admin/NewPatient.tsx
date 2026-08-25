@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type SubmitEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '../../components/Button'
-import { Field, ReadOnlyField, TextareaField } from '../../components/Field'
+import { ComboField, Field, ReadOnlyField, TextareaField } from '../../components/Field'
 import { calculateAge } from '../../lib/age'
 import { clinicalApi } from '../../lib/clinicalApi'
 import { findPatientByCode, formatPatientId } from '../../lib/patientId'
@@ -15,7 +15,8 @@ type Gender = 'male' | 'female' | 'other'
 interface PatientDraft {
   name: string
   phone: string
-  address: string
+  city: string
+  sector: string
   birthMode: BirthMode
   dob: string
   age: string
@@ -33,7 +34,8 @@ interface PatientDraft {
 const emptyDraft: PatientDraft = {
   name: '',
   phone: '',
-  address: '',
+  city: '',
+  sector: '',
   birthMode: 'dob',
   dob: '',
   age: '',
@@ -49,7 +51,7 @@ const emptyDraft: PatientDraft = {
 }
 
 const BIRTH_MODE_OPTIONS: { value: BirthMode; label: string }[] = [
-  { value: 'dob', label: 'Date of birth' },
+  { value: 'dob', label: 'DOB' },
   { value: 'age', label: 'Age' },
   { value: 'year', label: 'Birth year only' },
 ]
@@ -60,11 +62,31 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
+// Noida + Greater Noida + Delhi + 10 nearby NCR areas — city has no fixed
+// list requirement beyond this, so anything outside it can still just be
+// typed (see ComboField).
+const CITY_OPTIONS = [
+  'Noida',
+  'Greater Noida',
+  'Greater Noida West',
+  'Delhi',
+  'Ghaziabad',
+  'Gurugram',
+  'Faridabad',
+  'Indirapuram',
+  'Vaishali',
+  'Vasundhara',
+  'Sahibabad',
+  'Kaushambi',
+  'Loni',
+]
+
 function toDraft(patient: Patient): PatientDraft {
   return {
     name: patient.name,
     phone: patient.phone,
-    address: patient.address,
+    city: patient.city,
+    sector: patient.sector,
     // The stored record only ever has dob OR birthYear, never both — if it's
     // birthYear, we show it as "Birth year only" rather than guessing it was
     // originally entered as an age (that detail isn't preserved in storage).
@@ -91,6 +113,8 @@ export function NewPatient() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conditionOptions, setConditionOptions] = useState<string[]>([])
+  const [sectorOptions, setSectorOptions] = useState<string[]>([])
+  const [showPhysicalDetails, setShowPhysicalDetails] = useState(false)
   const { patients, loading: patientsLoading, addPatient, editPatient } = usePatients()
   const navigate = useNavigate()
 
@@ -102,10 +126,18 @@ export function NewPatient() {
 
   useEffect(() => {
     clinicalApi.listMedicalConditions().then(setConditionOptions)
+    // Sector has no fixed list (unlike city) — this grows from whatever
+    // staff have actually typed in before, same "pick or type" combo.
+    clinicalApi.listSectors().then(setSectorOptions)
   }, [])
 
   useEffect(() => {
-    if (editingPatient) setDraft(toDraft(editingPatient))
+    if (editingPatient) {
+      setDraft(toDraft(editingPatient))
+      // Don't hide height/weight the patient already has on file behind an
+      // extra click — only new/blank entries start collapsed.
+      if (editingPatient.height || editingPatient.weight) setShowPhysicalDetails(true)
+    }
   }, [editingPatient])
 
   const age = useMemo(() => {
@@ -134,7 +166,8 @@ export function NewPatient() {
     return {
       name: draft.name,
       phone: draft.phone,
-      address: draft.address,
+      city: draft.city,
+      sector: draft.sector,
       dob,
       birthYear,
       email: draft.email,
@@ -223,161 +256,183 @@ export function NewPatient() {
         <p className="hidden text-[12px] font-medium uppercase tracking-wider text-accent md:block">Admin · Patients</p>
         <h1>{isEditing ? 'Edit patient' : 'Add patient'}</h1>
         <p className="max-w-[52ch] text-ink-soft">
-         
+
         </p>
       </header>
 
       {error && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{error}</p>}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6 rounded-xl border border-rule bg-white p-6 shadow-sm">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field
-            label="Full name"
-            required
-            value={draft.name}
-            onChange={(e) => update('name', e.target.value)}
-            placeholder="Full Name"
-          />
-          <Field
-            label="Phone"
-            required
-            type="tel"
-            value={draft.phone}
-            onChange={(e) => update('phone', e.target.value)}
-            placeholder="9999999999"
-          />
-        </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-8 rounded-xl border border-rule bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-5">
+          <h2 className="border-b border-rule pb-2 text-subheading font-medium text-ink">Personal info</h2>
 
-        <TextareaField
-          label="Address"
-          required
-          value={draft.address}
-          onChange={(e) => update('address', e.target.value)}
-          placeholder=""
-        />
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-body font-medium text-ink">
-              Date of birth <span className="text-accent">*</span>
-            </span>
-            {/* <span className="text-[12px] text-ink-faint">
-              exact date preferred — age or birth year works if that's not known
-            </span> */}
-          </div>
-          <div className="inline-flex w-fit rounded-lg border border-rule bg-paper-raised p-1">
-            {BIRTH_MODE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => update('birthMode', opt.value)}
-                className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                  draft.birthMode === opt.value
-                    ? 'bg-white text-accent shadow-sm'
-                    : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          {draft.birthMode === 'dob' && (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field
-              label="Date of birth"
+              label="Full name"
               required
-              type="date"
-              value={draft.dob}
-              onChange={(e) => update('dob', e.target.value)}
-              max={new Date().toISOString().split('T')[0]}
+              value={draft.name}
+              onChange={(e) => update('name', e.target.value)}
+              placeholder="Full Name"
             />
-          )}
-          {draft.birthMode === 'age' && (
             <Field
-              label="Age"
+              label="Phone"
               required
-              type="number"
-              min="0"
-              max="130"
-              value={draft.age}
-              onChange={(e) => update('age', e.target.value)}
-              placeholder="42"
+              type="tel"
+              value={draft.phone}
+              onChange={(e) => update('phone', e.target.value)}
+              placeholder="9999999999"
             />
-          )}
-          {draft.birthMode === 'year' && (
-            <Field
-              label="Birth year"
+          </div>
+
+          <div className="grid grid-cols-2 gap-5">
+            <ComboField
+              label="City"
               required
-              type="number"
-              min="1900"
-              max={new Date().getFullYear()}
-              value={draft.birthYear}
-              onChange={(e) => update('birthYear', e.target.value)}
-              placeholder="1984"
+              options={CITY_OPTIONS}
+              value={draft.city}
+              onChange={(e) => update('city', e.target.value)}
+              placeholder="Noida"
             />
-          )}
-          <ReadOnlyField label="Age" value={age === null ? '—' : `${age} yrs`} />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-body font-medium text-ink">Gender</span>
-            <span className="text-[12px] text-ink-faint">optional</span>
+            <ComboField
+              label="Sector"
+              required
+              options={sectorOptions}
+              value={draft.sector}
+              onChange={(e) => update('sector', e.target.value)}
+              placeholder="Sector 62"
+            />
           </div>
-          <div className="inline-flex w-fit rounded-lg border border-rule bg-paper-raised p-1">
-            {GENDER_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => update('gender', draft.gender === opt.value ? null : opt.value)}
-                className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                  draft.gender === opt.value ? 'bg-white text-accent shadow-sm' : 'text-ink-soft hover:text-ink'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field
             label="Email"
-            hint="optional"
             type="email"
             value={draft.email}
             onChange={(e) => update('email', e.target.value)}
             placeholder="ranco@email.com"
           />
-          <Field
-            label="Height"
-            hint="optional, cm"
-            type="number"
-            min="0"
-            value={draft.height}
-            onChange={(e) => update('height', e.target.value)}
-            placeholder="165"
-          />
+
+          <div className="flex flex-wrap items-end gap-5">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-body font-medium text-ink">
+                DOB <span className="text-accent">*</span>
+              </span>
+              <div className="inline-flex w-fit rounded-lg border border-rule bg-paper-raised p-1">
+                {BIRTH_MODE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => update('birthMode', opt.value)}
+                    className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                      draft.birthMode === opt.value
+                        ? 'bg-white text-accent shadow-sm'
+                        : 'text-ink-soft hover:text-ink'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Input + calculated age always share one row, age kept narrow
+                — on mobile this pair wraps onto its own line below the mode
+                selector rather than each block stacking separately. */}
+            <div className="flex min-w-60 flex-1 gap-5">
+              <div className="min-w-0 flex-1">
+                {draft.birthMode === 'dob' && (
+                  <Field
+                    label="DOB"
+                    required
+                    type="date"
+                    value={draft.dob}
+                    onChange={(e) => update('dob', e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                )}
+                {draft.birthMode === 'age' && (
+                  <Field
+                    label="Age"
+                    required
+                    type="number"
+                    min="0"
+                    max="130"
+                    value={draft.age}
+                    onChange={(e) => update('age', e.target.value)}
+                    placeholder="42"
+                  />
+                )}
+                {draft.birthMode === 'year' && (
+                  <Field
+                    label="Birth year"
+                    required
+                    type="number"
+                    min="1900"
+                    max={new Date().getFullYear()}
+                    value={draft.birthYear}
+                    onChange={(e) => update('birthYear', e.target.value)}
+                    placeholder="1984"
+                  />
+                )}
+              </div>
+              <div className="w-24 shrink-0">
+                <ReadOnlyField label="Age" value={age === null ? '—' : `${age} yrs`} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-body font-medium text-ink">Gender</span>
+            </div>
+            <div className="flex flex-wrap gap-5">
+              {GENDER_OPTIONS.map((opt) => (
+                <label key={opt.value} className="flex items-center gap-2 text-body text-ink">
+                  <input
+                    type="radio"
+                    name="gender"
+                    checked={draft.gender === opt.value}
+                    onChange={() => update('gender', opt.value)}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="sm:w-[calc(50%-0.625rem)]">
-          <Field
-            label="Weight"
-            hint="optional, kg"
-            type="number"
-            min="0"
-            value={draft.weight}
-            onChange={(e) => update('weight', e.target.value)}
-            placeholder="62"
-          />
+        <div className="flex flex-col gap-5">
+          <div className="flex items-center justify-between gap-3 border-b border-rule pb-2">
+            <h2 className="text-subheading font-medium text-ink">Physical details</h2>
+            <Button type="button" variant="ghost" onClick={() => setShowPhysicalDetails((v) => !v)}>
+              {showPhysicalDetails ? 'Show less' : 'Show more'}
+            </Button>
+          </div>
+          {showPhysicalDetails && (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field
+                label="Height"
+                type="number"
+                min="0"
+                value={draft.height}
+                onChange={(e) => update('height', e.target.value)}
+                placeholder="165 cm"
+              />
+              <Field
+                label="Weight"
+                type="number"
+                min="0"
+                value={draft.weight}
+                onChange={(e) => update('weight', e.target.value)}
+                placeholder="62 kg"
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-body font-medium text-ink">Emergency contact</span>
-            <span className="text-[12px] text-ink-faint">optional</span>
           </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field
@@ -399,7 +454,6 @@ export function NewPatient() {
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-body font-medium text-ink">Medical conditions</span>
-            <span className="text-[12px] text-ink-faint">optional</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5 rounded-lg border border-rule bg-paper-raised p-4 sm:grid-cols-2">
             {conditionOptions.map((condition) => (
@@ -418,7 +472,6 @@ export function NewPatient() {
 
         <TextareaField
           label="Medical history"
-          hint="optional"
           value={draft.medicalHistory}
           onChange={(e) => update('medicalHistory', e.target.value)}
           placeholder=""

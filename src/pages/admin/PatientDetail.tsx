@@ -195,7 +195,10 @@ export function PatientDetail() {
             )}
 
             <div className="flex flex-col divide-y divide-rule rounded-xl border border-rule bg-white px-4">
-              <InfoRow label="Address" value={patient.address} />
+              <InfoRow
+                label="Address"
+                value={[patient.sector, patient.city].filter(Boolean).join(', ') || '—'}
+              />
               <InfoRow
                 label="Birthdate"
                 value={
