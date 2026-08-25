@@ -19,7 +19,10 @@ export function PatientOverview() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        <Link to={`/admin/patients/${formatPatientId(patient.patientNumber)}/edit`}>
+          <Button variant="secondary">Edit patient</Button>
+        </Link>
         <Link to="consultations" state={{ openForm: true }}>
           <Button variant="secondary">+ Add consultation</Button>
         </Link>

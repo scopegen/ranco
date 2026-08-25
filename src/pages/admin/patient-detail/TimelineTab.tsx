@@ -25,7 +25,9 @@ export function TimelineTab({ patient, data }: { patient: Patient; data: Patient
   // Billing tab being admin-only.
   const invoiceByTreatmentId: Record<string, (typeof data.invoices)[number] | undefined> = {}
   for (const invoice of data.invoices) {
-    for (const line of invoice.lines) invoiceByTreatmentId[line.treatmentId] = invoice
+    for (const line of invoice.lines) {
+      if (line.treatmentId) invoiceByTreatmentId[line.treatmentId] = invoice
+    }
   }
 
   events.push({
@@ -41,7 +43,7 @@ export function TimelineTab({ patient, data }: { patient: Patient; data: Patient
       hasTime: false,
       icon: <Stethoscope size={16} />,
       title: `Consultation with ${doctorName(consultation.doctorId)}`,
-      description: consultation.findings,
+      description: consultation.oralExamination,
       pill: <PaymentStatusPill status={consultation.paymentStatus} />,
     })
 

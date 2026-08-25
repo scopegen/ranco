@@ -10,6 +10,7 @@ import type {
   PaymentMode,
   PaymentStatus,
   PrescriptionEntry,
+  RxItem,
   Service,
   ServiceType,
   Staff,
@@ -37,7 +38,9 @@ interface ClinicContextValue {
       doctorId: string
       consultDate: string
       fee: number
-      findings: string
+      chiefComplaint: string
+      oralExamination: string
+      rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
       recommendedServiceIds: string[]
@@ -51,7 +54,9 @@ interface ClinicContextValue {
       doctorId: string
       consultDate: string
       fee: number
-      findings: string
+      chiefComplaint: string
+      oralExamination: string
+      rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
       recommendedServiceIds: string[]
@@ -76,6 +81,10 @@ interface ClinicContextValue {
   // One click, ends today.
   endTreatment: (treatmentId: string) => Promise<Treatment>
 
+  // Only allowed while the treatment has no visits logged yet — see the
+  // 409s clinicalApi.deleteTreatment can throw.
+  deleteTreatment: (treatmentId: string) => Promise<void>
+
   // Discounts stay a per-service concern — set on the treatment itself.
   updateTreatmentDiscount: (
     treatmentId: string,
@@ -92,7 +101,12 @@ interface ClinicContextValue {
   listPatientPayments: (patientId: string) => Promise<PatientPayment[]>
   getBillingHistory: (patientId: string) => Promise<BillingHistoryEvent[]>
 
-  generateInvoice: (patientId: string, treatmentIds: string[], paymentMode: PaymentMode) => Promise<Invoice>
+  generateInvoice: (
+    patientId: string,
+    treatmentIds: string[],
+    consultationIds: string[],
+    paymentMode: PaymentMode,
+  ) => Promise<Invoice>
   listInvoices: (patientId: string) => Promise<Invoice[]>
   viewInvoicePdf: (invoiceId: string) => Promise<void>
 
@@ -159,7 +173,9 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       doctorId: string
       consultDate: string
       fee: number
-      findings: string
+      chiefComplaint: string
+      oralExamination: string
+      rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
       recommendedServiceIds: string[]
@@ -170,7 +186,9 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       doctor_id: input.doctorId,
       consult_date: input.consultDate,
       fee: input.fee,
-      findings: input.findings,
+      chief_complaint: input.chiefComplaint,
+      oral_examination: input.oralExamination,
+      rx: input.rx,
       payment_status: input.paymentStatus,
       payment_mode: input.paymentMode,
       recommended_service_ids: input.recommendedServiceIds,
@@ -185,7 +203,9 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       doctorId: string
       consultDate: string
       fee: number
-      findings: string
+      chiefComplaint: string
+      oralExamination: string
+      rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
       recommendedServiceIds: string[]
@@ -196,7 +216,9 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       doctor_id: input.doctorId,
       consult_date: input.consultDate,
       fee: input.fee,
-      findings: input.findings,
+      chief_complaint: input.chiefComplaint,
+      oral_examination: input.oralExamination,
+      rx: input.rx,
       payment_status: input.paymentStatus,
       payment_mode: input.paymentMode,
       recommended_service_ids: input.recommendedServiceIds,
@@ -234,6 +256,10 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     return clinicalApi.endTreatment(treatmentId)
   }
 
+  async function deleteTreatment(treatmentId: string) {
+    return clinicalApi.deleteTreatment(treatmentId)
+  }
+
   async function updateTreatmentDiscount(
     treatmentId: string,
     discount: { type: 'percent' | 'amount'; value: number } | null,
@@ -267,8 +293,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     return clinicalApi.getBillingHistory(patientId)
   }
 
-  async function generateInvoice(patientId: string, treatmentIds: string[], paymentMode: PaymentMode) {
-    return clinicalApi.generateInvoice(patientId, treatmentIds, paymentMode)
+  async function generateInvoice(
+    patientId: string,
+    treatmentIds: string[],
+    consultationIds: string[],
+    paymentMode: PaymentMode,
+  ) {
+    return clinicalApi.generateInvoice(patientId, treatmentIds, consultationIds, paymentMode)
   }
 
   async function listInvoices(patientId: string) {
@@ -355,6 +386,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         startTreatment,
         logVisit,
         endTreatment,
+        deleteTreatment,
         updateTreatmentDiscount,
         getBillingSummary,
         addPatientPayment,

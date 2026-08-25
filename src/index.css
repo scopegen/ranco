@@ -60,6 +60,10 @@
   --color-accent-tint: #e6eef4;
   --color-crit: #a8433a;
   --color-crit-soft: #f6e6e2;
+  --color-ok: #2f7d4f;
+  --color-ok-soft: #e2f0e6;
+  --color-warn: #96690f;
+  --color-warn-soft: #faf0d9;
 }
 
 /* ---- base ---- */

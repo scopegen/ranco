@@ -6,6 +6,14 @@ export type ServiceType = 'dental' | 'lab'
 
 export const CONSULTATION_FEE = 500
 export const PAYMENT_MODES: PaymentMode[] = ['cash', 'card', 'upi']
+// Standard dosing-frequency shorthand — doesn't need to be exhaustive, a
+// free-typed medicine name sits next to it so anything unusual still fits.
+export const RX_FREQUENCIES = ['OD', 'BD', 'TDS', 'QID', 'SOS', 'HS', 'STAT'] as const
+
+export interface RxItem {
+  medicine: string
+  frequency: string
+}
 
 export interface Staff {
   id: string
@@ -30,7 +38,9 @@ export interface Consultation {
   doctorId: string
   consultDate: string
   fee: number
-  findings: string
+  chiefComplaint: string
+  oralExamination: string
+  rx: RxItem[]
   paymentStatus: PaymentStatus
   paymentMode?: PaymentMode
   paidAt?: string
@@ -118,7 +128,8 @@ export interface Visit {
 }
 
 export interface InvoiceLine {
-  treatmentId: string
+  treatmentId: string | null
+  consultationId: string | null
   amount: number
 }
 

@@ -24,7 +24,7 @@ PATIENT_ID=$(echo "$PATIENT" | python -c "import sys,json; print(json.load(sys.s
 
 echo "== create consultation =="
 CONSULT=$(curl -s -X POST "$BASE/patients/$PATIENT_ID/consultations" -H "$AUTH" -H "Content-Type: application/json" \
-  -d "{\"doctor_id\":\"$DOCTOR_ID\",\"consult_date\":\"2026-08-04\",\"fee\":500,\"findings\":\"Test findings\",\"payment_status\":\"paid\",\"payment_mode\":\"cash\",\"recommended_service_ids\":[\"$SERVICE_ID\"]}")
+  -d "{\"doctor_id\":\"$DOCTOR_ID\",\"consult_date\":\"2026-08-04\",\"fee\":500,\"chief_complaint\":\"Test complaint\",\"oral_examination\":\"Test findings\",\"rx\":[{\"medicine\":\"Amoxicillin 500mg\",\"frequency\":\"BD\"}],\"payment_status\":\"paid\",\"payment_mode\":\"cash\",\"recommended_service_ids\":[\"$SERVICE_ID\"]}")
 echo "$CONSULT"
 CONSULT_ID=$(echo "$CONSULT" | python -c "import sys,json; print(json.load(sys.stdin)['id'])")
 

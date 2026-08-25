@@ -1,14 +1,25 @@
 import { useState, type SubmitEvent } from 'react'
-import { CalendarPlus, CheckCircle2 } from 'lucide-react'
+import { CalendarPlus, CheckCircle2, Trash2 } from 'lucide-react'
 import { Pill } from '../../../components/Pill'
 import { Button } from '../../../components/Button'
-import { Field, SelectField, TextareaField } from '../../../components/Field'
+import { Field, SelectField } from '../../../components/Field'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatDate } from '../../../lib/date'
-import type { Consultation, Treatment, Visit } from '../../../types/clinical'
+import type { Consultation, RxItem, Treatment, Visit } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
-import { CategorizedServicePicker } from './ConsultationsTab'
+import { CategorizedServicePicker, RxRowsField } from './ConsultationsTab'
+
+/** RxItem rows -> the plain-text, one-medicine-per-line format the backend's
+ * PrescriptionEntry.notes (and its PDF rendering) already expects — no
+ * backend change needed to get the same structured Rx input used on the
+ * consultation form here too. */
+function formatRx(rx: RxItem[]): string {
+  return rx
+    .filter((item) => item.medicine.trim() !== '')
+    .map((item) => `${item.medicine.trim()} — ${item.frequency}`)
+    .join('\n')
+}
 
 interface Props {
   patient: Patient
@@ -52,8 +63,27 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
     return <p className="text-ink-soft">No consultations yet — add one from the Consultations tab.</p>
   }
 
+  // Most actionable first: ongoing treatments (log a visit / end it), then
+  // consultations awaiting a treatment to start, then finished ones last —
+  // those are just the historical record.
+  const ongoingTreatments = data.treatments.filter((t) => t.status === 'ongoing')
+  const finishedTreatments = data.treatments.filter((t) => t.status === 'finished')
+
+  function renderTreatmentCard(treatment: Treatment) {
+    return (
+      <TreatmentCard
+        key={treatment.id}
+        patient={patient}
+        treatment={treatment}
+        visits={data.visitsByTreatment[treatment.id] ?? []}
+        onChange={onChange}
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      {ongoingTreatments.map(renderTreatmentCard)}
       {pendingItems.map((item) => (
         <StartTreatmentCard
           key={`${item.consultation.id}-${item.serviceId ?? 'none'}`}
@@ -62,15 +92,7 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
           onChange={onChange}
         />
       ))}
-      {data.treatments.map((treatment) => (
-        <TreatmentCard
-          key={treatment.id}
-          patient={patient}
-          treatment={treatment}
-          visits={data.visitsByTreatment[treatment.id] ?? []}
-          onChange={onChange}
-        />
-      ))}
+      {finishedTreatments.map(renderTreatmentCard)}
     </div>
   )
 }
@@ -84,12 +106,14 @@ function StartTreatmentCard({
   recommendedServiceId?: string
   onChange: () => void
 }) {
-  const { doctors, services, doctorName, serviceName, startTreatment } = useClinic()
+  const { doctors, services, doctorName, serviceName, startTreatment, updateConsultation } = useClinic()
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [serviceId, setServiceId] = useState(recommendedServiceId ?? services[0]?.id)
   const [doctorId, setDoctorId] = useState(consultation.doctorId ?? doctors[0]?.id)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
@@ -102,6 +126,36 @@ function StartTreatmentCard({
       setError(err instanceof Error ? err.message : 'Failed to start treatment')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Only meaningful when this prompt is for one specific recommended
+  // service — just drops that service from the consultation's recommended
+  // list, same "full replace" pattern the edit-consultation form already
+  // uses. Nothing to remove for the no-specific-service fallback prompt
+  // (it'd mean deleting the consultation itself, out of scope here).
+  async function handleRemove() {
+    if (!recommendedServiceId) return
+    if (!window.confirm(`Remove "${serviceName(recommendedServiceId)}" from this consultation's recommended treatments?`)) return
+    setRemoving(true)
+    setRemoveError(null)
+    try {
+      await updateConsultation(consultation.patientId, consultation.id, {
+        doctorId: consultation.doctorId,
+        consultDate: consultation.consultDate,
+        fee: consultation.fee,
+        chiefComplaint: consultation.chiefComplaint,
+        oralExamination: consultation.oralExamination,
+        rx: consultation.rx,
+        paymentStatus: consultation.paymentStatus,
+        paymentMode: consultation.paymentMode,
+        recommendedServiceIds: consultation.recommendedServiceIds.filter((id) => id !== recommendedServiceId),
+        recommendationNote: consultation.recommendationNote,
+      })
+      onChange()
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : 'Failed to remove the recommendation')
+      setRemoving(false)
     }
   }
 
@@ -119,14 +173,29 @@ function StartTreatmentCard({
             <p className="mt-1 text-[12px] italic text-ink-soft">&ldquo;{consultation.recommendationNote}&rdquo;</p>
           )}
         </div>
-        <Pill variant="outline">Awaiting treatment</Pill>
+        <Pill variant="warning">Pending</Pill>
       </div>
 
       {!formOpen && (
-        <Button variant="secondary" onClick={() => setFormOpen(true)}>
-          Start treatment
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="secondary" onClick={() => setFormOpen(true)}>
+            Start treatment
+          </Button>
+          {recommendedServiceId && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={removing}
+              aria-label="Remove recommended treatment"
+              title="Remove recommended treatment"
+              className="flex items-center justify-center rounded-lg bg-white p-2.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       )}
+      {removeError && <p className="text-[13px] text-crit">{removeError}</p>}
 
       {formOpen && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-white p-4">
@@ -166,12 +235,17 @@ function TreatmentCard({
   visits: Visit[]
   onChange: () => void
 }) {
-  const { doctorName, serviceName, logVisit, addPrescription, endTreatment } = useClinic()
+  const { doctorName, serviceName, logVisit, addPrescription, endTreatment, deleteTreatment } = useClinic()
   const [visitFormOpen, setVisitFormOpen] = useState(false)
   const [ending, setEnding] = useState(false)
   const [endError, setEndError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const serviceLabel = serviceName(treatment.serviceId)
+  // Only safe to delete before the patient has actually come in for it —
+  // once a visit is logged the treatment is "started" and stays a record.
+  const canDelete = treatment.status === 'ongoing' && visits.length === 0
 
   async function handleEnd() {
     setEnding(true)
@@ -186,6 +260,19 @@ function TreatmentCard({
     }
   }
 
+  async function handleDelete() {
+    if (!window.confirm(`Delete this ${serviceLabel} treatment? This can't be undone.`)) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteTreatment(treatment.id)
+      onChange()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete the treatment')
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -193,7 +280,7 @@ function TreatmentCard({
         {treatment.status === 'finished' ? (
           <Pill variant="solid">Finished</Pill>
         ) : (
-          <Pill variant="outline">Ongoing</Pill>
+          <Pill variant="success">Ongoing</Pill>
         )}
       </div>
 
@@ -223,6 +310,18 @@ function TreatmentCard({
             >
               <CheckCircle2 size={15} />
             </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                aria-label="Delete treatment"
+                title="Delete treatment"
+                className="flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -247,6 +346,18 @@ function TreatmentCard({
           <div className="flex flex-col gap-4 border-t border-rule pt-4">
             {!visitFormOpen && (
               <div className="flex flex-wrap items-center justify-end gap-3">
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    aria-label="Delete treatment"
+                    title="Delete treatment"
+                    className="flex items-center justify-center rounded-lg bg-paper-raised p-2.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
                 <Button variant="secondary" onClick={() => setVisitFormOpen(true)}>
                   + Log visit
                 </Button>
@@ -256,6 +367,7 @@ function TreatmentCard({
               </div>
             )}
             {endError && <p className="text-[13px] text-crit">{endError}</p>}
+            {deleteError && <p className="text-[13px] text-crit">{deleteError}</p>}
 
             {visitFormOpen && (
               <LogVisitForm
@@ -303,12 +415,19 @@ function LogVisitForm({
 
   const [addRx, setAddRx] = useState(false)
   const [diagnosis, setDiagnosis] = useState('')
-  const [rxNotes, setRxNotes] = useState('')
+  const [rx, setRx] = useState<RxItem[]>([])
   const [advice, setAdvice] = useState('')
   const [nextVisit, setNextVisit] = useState('')
+  const [rxError, setRxError] = useState<string | null>(null)
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
+    setRxError(null)
+    const notes = formatRx(rx)
+    if (addRx && notes === '') {
+      setRxError('Add at least one medicine.')
+      return
+    }
     setSubmitting(true)
     try {
       // No price/payment info collected here at all — billing happens
@@ -319,7 +438,7 @@ function LogVisitForm({
         prescription: addRx
           ? {
               diagnosis: diagnosis || undefined,
-              notes: rxNotes,
+              notes,
               advice: advice || undefined,
               nextVisit: nextVisit || undefined,
             }
@@ -340,16 +459,11 @@ function LogVisitForm({
 
       {addRx && (
         <div className="flex flex-col gap-4 rounded-lg bg-white p-4">
-          <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="e.g. Deep caries, tooth 36" />
-          <TextareaField
-            label="Rx"
-            required
-            value={rxNotes}
-            onChange={(e) => setRxNotes(e.target.value)}
-            placeholder={'One medicine per line, e.g.\nAmoxicillin 500mg — 1-0-1 — 5 days\nIbuprofen 400mg — as needed for pain'}
-          />
-          <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} placeholder="e.g. Avoid hot/cold food for 2 days" />
-          <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} placeholder="e.g. After 5 days" />
+          <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+          <RxRowsField value={rx} onChange={setRx} />
+          {rxError && <p className="text-[13px] text-crit">{rxError}</p>}
+          <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
+          <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
         </div>
       )}
 

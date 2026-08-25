@@ -7,7 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_staff, require_admin
 from app.database import get_db
-from app.models import Consultation, Service, Staff, Treatment, TreatmentHandoff, TreatmentStatus
+from app.models import (
+    Consultation,
+    InvoiceLine,
+    Service,
+    Staff,
+    Treatment,
+    TreatmentHandoff,
+    TreatmentPayment,
+    TreatmentStatus,
+    Visit,
+)
 from app.schemas import (
     TreatmentCreate,
     TreatmentDiscountUpdate,
@@ -153,3 +163,36 @@ def end_treatment(
     db.commit()
     db.refresh(treatment)
     return treatment
+
+
+@router.delete("/treatments/{treatment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_treatment(
+    treatment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current: Staff = Depends(get_current_staff),
+):
+    """Removes a treatment the patient decided not to go ahead with — only
+    while it hasn't actually started, i.e. no visit has been logged against
+    it yet. Deleting it also removes its service_price contribution to the
+    patient's combined bill (see the model comment on Treatment.service_price
+    for why that charge is added the moment a treatment is logged)."""
+    treatment = db.get(Treatment, treatment_id)
+    if treatment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
+    if treatment.status != TreatmentStatus.ongoing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only an ongoing treatment can be deleted")
+    if db.scalar(select(Visit).where(Visit.treatment_id == treatment_id)) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Can't delete a treatment that already has visits logged"
+        )
+    # Defensive — none of these should exist on a treatment with zero visits,
+    # but don't silently orphan them if they somehow do.
+    if db.scalar(select(TreatmentHandoff).where(TreatmentHandoff.treatment_id == treatment_id)) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't delete a treatment with handoff history")
+    if db.scalar(select(TreatmentPayment).where(TreatmentPayment.treatment_id == treatment_id)) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't delete a treatment with payments recorded")
+    if db.scalar(select(InvoiceLine).where(InvoiceLine.treatment_id == treatment_id)) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't delete a treatment already on an invoice")
+
+    db.delete(treatment)
+    db.commit()

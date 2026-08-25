@@ -9,6 +9,7 @@ import type {
   PaymentMode,
   PaymentStatus,
   PrescriptionEntry,
+  RxItem,
   Service,
   ServiceType,
   Staff,
@@ -55,13 +56,20 @@ interface RawService {
   active: boolean
 }
 
+interface RawRxItem {
+  medicine: string
+  frequency: string
+}
+
 interface RawConsultation {
   id: string
   patient_id: string
   doctor_id: string
   consult_date: string
   fee: number
-  findings: string
+  chief_complaint: string
+  oral_examination: string
+  rx: RawRxItem[]
   payment_status: PaymentStatus
   payment_mode: PaymentMode | null
   paid_at: string | null
@@ -131,7 +139,8 @@ interface RawVisit {
 }
 
 interface RawInvoiceLine {
-  treatment_id: string
+  treatment_id: string | null
+  consultation_id: string | null
   amount: number
 }
 
@@ -214,7 +223,9 @@ const toConsultation = (r: RawConsultation): Consultation => ({
   doctorId: r.doctor_id,
   consultDate: r.consult_date,
   fee: r.fee,
-  findings: r.findings,
+  chiefComplaint: r.chief_complaint,
+  oralExamination: r.oral_examination,
+  rx: r.rx.map((item): RxItem => ({ medicine: item.medicine, frequency: item.frequency })),
   paymentStatus: r.payment_status,
   paymentMode: r.payment_mode ?? undefined,
   paidAt: r.paid_at ?? undefined,
@@ -293,7 +304,7 @@ const toInvoice = (r: RawInvoice): Invoice => ({
   paymentMode: r.payment_mode,
   issuedAt: r.issued_at,
   issuedBy: r.issued_by,
-  lines: r.lines.map((l) => ({ treatmentId: l.treatment_id, amount: l.amount })),
+  lines: r.lines.map((l) => ({ treatmentId: l.treatment_id, consultationId: l.consultation_id, amount: l.amount })),
 })
 
 const toPrescriptionEntry = (r: RawPrescriptionEntry): PrescriptionEntry => ({
@@ -380,7 +391,9 @@ export const clinicalApi = {
       doctor_id: string
       consult_date: string
       fee: number
-      findings: string
+      chief_complaint: string
+      oral_examination: string
+      rx: RawRxItem[]
       payment_status: PaymentStatus
       payment_mode?: PaymentMode
       recommended_service_ids: string[]
@@ -394,7 +407,9 @@ export const clinicalApi = {
       doctor_id: string
       consult_date: string
       fee: number
-      findings: string
+      chief_complaint: string
+      oral_examination: string
+      rx: RawRxItem[]
       payment_status: PaymentStatus
       payment_mode?: PaymentMode
       recommended_service_ids: string[]
@@ -428,6 +443,9 @@ export const clinicalApi = {
   ) => api.patch<RawTreatment>(`/treatments/${treatmentId}/discount`, input).then(toTreatment),
   // One click, ends today — no request body, no confirmation form.
   endTreatment: (treatmentId: string) => api.post<RawTreatment>(`/treatments/${treatmentId}/end`).then(toTreatment),
+  // Only succeeds server-side while the treatment has no visits logged yet —
+  // see the 409s on DELETE /treatments/{id}.
+  deleteTreatment: (treatmentId: string) => api.delete<void>(`/treatments/${treatmentId}`),
 
   // visits
   listVisits: (treatmentId: string) =>
@@ -435,12 +453,14 @@ export const clinicalApi = {
   logVisit: (treatmentId: string, input: { visit_date: string }) =>
     api.post<RawVisit>(`/treatments/${treatmentId}/visits`, input).then(toVisit),
 
-  // invoices — one invoice can cover several treatments picked together;
-  // always at full listed price, no discount (see GenerateInvoiceRequest)
-  generateInvoice: (patientId: string, treatmentIds: string[], paymentMode: PaymentMode) =>
+  // invoices — one invoice can cover several treatments and/or consultations
+  // picked together; always at full listed price, no discount (see
+  // GenerateInvoiceRequest)
+  generateInvoice: (patientId: string, treatmentIds: string[], consultationIds: string[], paymentMode: PaymentMode) =>
     api
       .post<RawInvoice>(`/patients/${patientId}/invoices`, {
         treatment_ids: treatmentIds,
+        consultation_ids: consultationIds,
         payment_mode: paymentMode,
       })
       .then(toInvoice),

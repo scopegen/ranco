@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Search, Stethoscope, Calendar, X } from 'lucide-react'
+import { Search, Calendar, X } from 'lucide-react'
 import { Button } from '../../components/Button'
 import { usePatients } from '../../state/PatientsContext'
 import { calculateAge } from '../../lib/age'
@@ -245,11 +245,11 @@ export function PatientList() {
                         <div className="flex items-center gap-1.5">
                           <Link
                             to={`/admin/patients/${formatPatientId(patient.patientNumber)}/treatments`}
-                            aria-label={`Log treatment for ${patient.name}`}
-                            title="Log treatment"
-                            className="rounded-md p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep"
+                            aria-label={`View treatments for ${patient.name}`}
+                            title="View treatments"
+                            className="rounded-md border border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint"
                           >
-                            <Stethoscope size={16} />
+                            View
                           </Link>
                         </div>
                       </td>

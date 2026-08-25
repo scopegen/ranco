@@ -109,11 +109,18 @@ class ServiceOut(BaseModel):
 # ---- Consultation ----
 
 
+class RxItem(BaseModel):
+    medicine: str
+    frequency: str
+
+
 class ConsultationCreate(BaseModel):
     doctor_id: uuid.UUID
     consult_date: date
     fee: float
-    findings: str
+    chief_complaint: str
+    oral_examination: str
+    rx: list[RxItem] = []
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None = None
     recommended_service_ids: list[uuid.UUID] = []
@@ -127,7 +134,9 @@ class ConsultationOut(BaseModel):
     doctor_id: uuid.UUID
     consult_date: date
     fee: float
-    findings: str
+    chief_complaint: str
+    oral_examination: str
+    rx: list[RxItem]
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None
     paid_at: datetime | None
@@ -240,25 +249,29 @@ class VisitOut(BaseModel):
 
 class GenerateInvoiceRequest(BaseModel):
     """No discount here on purpose — an invoice is a record of the full,
-    listed price of the services it covers. Whatever discount a service
-    carries is a Billing-tab concern, not something the invoice document
-    shows."""
+    listed price of the treatments/consultations it covers. Whatever
+    discount an item carries is a Billing-tab concern, not something the
+    invoice document shows."""
 
-    treatment_ids: list[uuid.UUID]
+    treatment_ids: list[uuid.UUID] = []
+    consultation_ids: list[uuid.UUID] = []
     payment_mode: PaymentMode = PaymentMode.cash
 
     @model_validator(mode="after")
     def _validate(self) -> "GenerateInvoiceRequest":
-        if not self.treatment_ids:
-            raise ValueError("Select at least one treatment.")
+        if not self.treatment_ids and not self.consultation_ids:
+            raise ValueError("Select at least one treatment or consultation.")
         if len(set(self.treatment_ids)) != len(self.treatment_ids):
             raise ValueError("The same treatment was selected more than once.")
+        if len(set(self.consultation_ids)) != len(self.consultation_ids):
+            raise ValueError("The same consultation was selected more than once.")
         return self
 
 
 class InvoiceLineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    treatment_id: uuid.UUID
+    treatment_id: uuid.UUID | None
+    consultation_id: uuid.UUID | None
     amount: float
 
 

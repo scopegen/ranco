@@ -10,6 +10,22 @@ import type { Patient } from '../../../state/PatientsContext'
 import type { BillingHistoryEvent, Consultation, Invoice, PaymentMode, Treatment } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 
+/** Shared discount math — a percent or a flat amount off some base, capped
+ * so it can never take the charge below zero. Used both for what's actually
+ * saved and for the discount form's live preview, so the two never disagree. */
+function applyDiscount(
+  baseAmount: number,
+  type: 'percent' | 'amount' | null | undefined,
+  value: number | null | undefined,
+): { discountAmount: number; charge: number } {
+  let discountAmount = 0
+  if (type && value) {
+    discountAmount = type === 'percent' ? baseAmount * (value / 100) : value
+    discountAmount = Math.min(discountAmount, baseAmount)
+  }
+  return { discountAmount, charge: baseAmount - discountAmount }
+}
+
 /** (servicePrice, discountAmount, charge) for one treatment — mirrors the
  * backend's own `_treatment_charge` exactly, so what's shown here always
  * matches what the Billing summary and invoices actually total. Uses the
@@ -17,24 +33,16 @@ import type { PatientClinicalData } from '../PatientDetail'
  * price. */
 function treatmentCharge(t: Treatment): { servicePrice: number; discountAmount: number; charge: number } {
   const servicePrice = t.servicePrice
-  let discountAmount = 0
-  if (t.discountType && t.discountValue) {
-    discountAmount = t.discountType === 'percent' ? servicePrice * (t.discountValue / 100) : t.discountValue
-    discountAmount = Math.min(discountAmount, servicePrice)
-  }
-  return { servicePrice, discountAmount, charge: servicePrice - discountAmount }
+  const { discountAmount, charge } = applyDiscount(servicePrice, t.discountType, t.discountValue)
+  return { servicePrice, discountAmount, charge }
 }
 
 /** Same math, for a consultation's fee — same two discount types, same
  * per-service billing concern, just a different base amount. */
 function consultationCharge(c: Consultation): { fee: number; discountAmount: number; charge: number } {
   const fee = c.fee
-  let discountAmount = 0
-  if (c.discountType && c.discountValue) {
-    discountAmount = c.discountType === 'percent' ? fee * (c.discountValue / 100) : c.discountValue
-    discountAmount = Math.min(discountAmount, fee)
-  }
-  return { fee, discountAmount, charge: fee - discountAmount }
+  const { discountAmount, charge } = applyDiscount(fee, c.discountType, c.discountValue)
+  return { fee, discountAmount, charge }
 }
 
 /** "10% off" / "₹100 off" for the collapsed card header — undefined when
@@ -72,8 +80,12 @@ export function BillingTab({ patient, data, onChange, openPaymentSignal }: Props
   const summary = data.billingSummary ?? { totalBilled: 0, totalPaid: 0, totalOutstanding: 0 }
 
   const invoiceByTreatmentId: Record<string, Invoice | undefined> = {}
+  const invoiceByConsultationId: Record<string, Invoice | undefined> = {}
   for (const invoice of data.invoices) {
-    for (const line of invoice.lines) invoiceByTreatmentId[line.treatmentId] = invoice
+    for (const line of invoice.lines) {
+      if (line.treatmentId) invoiceByTreatmentId[line.treatmentId] = invoice
+      if (line.consultationId) invoiceByConsultationId[line.consultationId] = invoice
+    }
   }
 
   type Row =
@@ -101,7 +113,9 @@ export function BillingTab({ patient, data, onChange, openPaymentSignal }: Props
       <GenerateInvoiceSection
         patient={patient}
         treatments={data.treatments}
+        consultations={data.consultations}
         invoiceByTreatmentId={invoiceByTreatmentId}
+        invoiceByConsultationId={invoiceByConsultationId}
         serviceName={serviceName}
         onChange={onChange}
       />
@@ -112,6 +126,7 @@ export function BillingTab({ patient, data, onChange, openPaymentSignal }: Props
             <ConsultationBillingCard
               key={row.consultation.id}
               consultation={row.consultation}
+              invoice={invoiceByConsultationId[row.consultation.id]}
               doctorName={doctorName}
               onChange={onChange}
             />
@@ -229,7 +244,13 @@ function AddPaymentModal({
           required
         />
         <Field label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-        <SelectField label="Payment mode" options={['cash', 'card', 'upi']} value={mode} onChange={(e) => setMode(e.target.value as PaymentMode)} />
+        <SelectField
+          label="Payment mode"
+          options={['cash', 'card', 'upi']}
+          value={mode}
+          onChange={(e) => setMode(e.target.value as PaymentMode)}
+          className="uppercase"
+        />
 
         {error && <p className="text-[13px] text-crit">{error}</p>}
 
@@ -329,23 +350,29 @@ export function BillingHistoryModal({ patientId, onClose }: { patientId: string;
 function GenerateInvoiceSection({
   patient,
   treatments,
+  consultations,
   invoiceByTreatmentId,
+  invoiceByConsultationId,
   serviceName,
   onChange,
 }: {
   patient: Patient
   treatments: Treatment[]
+  consultations: Consultation[]
   invoiceByTreatmentId: Record<string, Invoice | undefined>
+  invoiceByConsultationId: Record<string, Invoice | undefined>
   serviceName: (id: string | undefined) => string
   onChange: () => void
 }) {
   const { generateInvoice, viewInvoicePdf } = useClinic()
-  // Invoices show the full listed price, always — a treatment just needs to
-  // not already be on an invoice. Status (ongoing/finished) no longer
-  // matters here since invoicing doesn't touch it anymore.
-  const invoiceable = treatments.filter((t) => !invoiceByTreatmentId[t.id])
+  // Invoices show the full listed price, always — a treatment/consultation
+  // just needs to not already be on an invoice. Status (ongoing/finished) or
+  // payment status no longer matter here since invoicing doesn't touch them.
+  const invoiceableTreatments = treatments.filter((t) => !invoiceByTreatmentId[t.id])
+  const invoiceableConsultations = consultations.filter((c) => !invoiceByConsultationId[c.id])
   const [open, setOpen] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selectedTreatments, setSelectedTreatments] = useState<Set<string>>(new Set())
+  const [selectedConsultations, setSelectedConsultations] = useState<Set<string>>(new Set())
   const [mode, setMode] = useState<PaymentMode>('cash')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -353,10 +380,10 @@ function GenerateInvoiceSection({
   const [viewing, setViewing] = useState(false)
   const [viewError, setViewError] = useState<string | null>(null)
 
-  if (invoiceable.length === 0) return null
+  if (invoiceableTreatments.length === 0 && invoiceableConsultations.length === 0) return null
 
-  function toggle(id: string) {
-    setSelected((prev) => {
+  function toggleTreatment(id: string) {
+    setSelectedTreatments((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -364,18 +391,28 @@ function GenerateInvoiceSection({
     })
   }
 
-  const total = [...selected].reduce((sum, id) => {
-    const t = invoiceable.find((tt) => tt.id === id)
-    return sum + (t ? t.servicePrice : 0)
-  }, 0)
+  function toggleConsultation(id: string) {
+    setSelectedConsultations((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectedCount = selectedTreatments.size + selectedConsultations.size
+  const total =
+    [...selectedTreatments].reduce((sum, id) => sum + (invoiceableTreatments.find((t) => t.id === id)?.servicePrice ?? 0), 0) +
+    [...selectedConsultations].reduce((sum, id) => sum + (invoiceableConsultations.find((c) => c.id === id)?.fee ?? 0), 0)
 
   async function handleGenerate() {
     setSubmitting(true)
     setError(null)
     try {
-      const invoice = await generateInvoice(patient.id, [...selected], mode)
+      const invoice = await generateInvoice(patient.id, [...selectedTreatments], [...selectedConsultations], mode)
       setGenerated(invoice)
-      setSelected(new Set())
+      setSelectedTreatments(new Set())
+      setSelectedConsultations(new Set())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate the invoice')
     } finally {
@@ -418,13 +455,27 @@ function GenerateInvoiceSection({
           {/* Full listed price only — discounts are a Billing-tab concern
               and never appear on the invoice document itself. */}
           <div className="flex flex-col gap-2">
-            {invoiceable.map((t) => (
+            {invoiceableConsultations.map((c) => (
+              <label key={c.id} className="flex items-center justify-between gap-3 rounded-lg border border-rule px-3.5 py-2.5">
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedConsultations.has(c.id)}
+                    onChange={() => toggleConsultation(c.id)}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  <span className="text-body text-ink">Consultation &middot; {formatDate(c.consultDate)}</span>
+                </span>
+                <span className="text-[13px] text-ink-soft">{formatINR(c.fee)}</span>
+              </label>
+            ))}
+            {invoiceableTreatments.map((t) => (
               <label key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-rule px-3.5 py-2.5">
                 <span className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={selected.has(t.id)}
-                    onChange={() => toggle(t.id)}
+                    checked={selectedTreatments.has(t.id)}
+                    onChange={() => toggleTreatment(t.id)}
                     className="h-4 w-4 accent-accent"
                   />
                   <span className="text-body text-ink">{serviceName(t.serviceId)}</span>
@@ -434,14 +485,14 @@ function GenerateInvoiceSection({
             ))}
           </div>
 
-          {selected.size > 0 && (
+          {selectedCount > 0 && (
             <>
               <SelectField
                 label="Payment mode"
                 options={['cash', 'card', 'upi']}
                 value={mode}
                 onChange={(e) => setMode(e.target.value as PaymentMode)}
-                className="w-32"
+                className="w-32 uppercase"
               />
 
               <table className="w-fit text-body">
@@ -466,7 +517,7 @@ function GenerateInvoiceSection({
             </>
           )}
 
-          {selected.size === 0 && (
+          {selectedCount === 0 && (
             <div className="flex gap-3">
               <Button variant="ghost" onClick={() => setOpen(false)}>
                 Cancel
@@ -534,7 +585,9 @@ function InvoiceRow({
   const [error, setError] = useState<string | null>(null)
 
   const labels = invoice.lines
-    .map((line) => serviceName(treatments.find((t) => t.id === line.treatmentId)?.serviceId))
+    .map((line) =>
+      line.treatmentId ? serviceName(treatments.find((t) => t.id === line.treatmentId)?.serviceId) : 'Consultation',
+    )
     .join(', ')
 
   async function handleView() {
@@ -553,7 +606,7 @@ function InvoiceRow({
     <div className="flex flex-col gap-1.5 rounded-lg border border-rule bg-white px-4 py-3 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <span className="text-body font-medium text-ink">{labels || `${invoice.lines.length} treatment(s)`}</span>
+          <span className="text-body font-medium text-ink">{labels || `${invoice.lines.length} item(s)`}</span>
           <span className="text-[12px] text-ink-faint">
             {formatDateTime(invoice.issuedAt)} &middot; {invoice.paymentMode.toUpperCase()}
           </span>
@@ -573,12 +626,16 @@ function InvoiceRow({
 function CardHeader({
   label,
   date,
+  charge,
   discountLabel,
   expanded,
   onToggle,
 }: {
   label: string
   date: string
+  // The service/consultation charge — shown right beside the name so it's
+  // visible without expanding the card.
+  charge: number
   // e.g. "10% off" / "₹100 off" — omitted entirely when there's no discount.
   discountLabel?: string
   expanded: boolean
@@ -587,7 +644,9 @@ function CardHeader({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex flex-col gap-0.5">
-        <span className="text-body font-medium text-ink">{label}</span>
+        <span className="text-body font-medium text-ink">
+          {label} <span className="font-normal text-ink-soft">&middot; {formatINR(charge)}</span>
+        </span>
         <span className="text-[12px] text-ink-faint">{formatDate(date)}</span>
       </div>
       <div className="flex items-center gap-3">
@@ -613,23 +672,40 @@ function CardHeader({
 // Payment action above, never per-consultation.
 function ConsultationBillingCard({
   consultation,
+  invoice,
   doctorName,
   onChange,
 }: {
   consultation: Consultation
+  invoice: Invoice | undefined
   doctorName: (id: string | undefined) => string
   onChange: () => void
 }) {
   const { updateConsultationDiscount } = useClinic()
   const [expanded, setExpanded] = useState(false)
   const [discountFormOpen, setDiscountFormOpen] = useState(false)
-  const { fee, discountAmount, charge } = consultationCharge(consultation)
+  const [discountType, setDiscountType] = useState<'none' | 'percent' | 'amount'>(consultation.discountType ?? 'none')
+  const [discountValue, setDiscountValue] = useState(consultation.discountValue != null ? String(consultation.discountValue) : '')
+  const { fee, discountAmount: savedDiscountAmount, charge: savedCharge } = consultationCharge(consultation)
+
+  // While the discount form is open, the table below shows a live preview of
+  // what Save will produce; closed, it falls back to the last-saved figures.
+  const { discountAmount, charge } = discountFormOpen
+    ? applyDiscount(fee, discountType === 'none' ? null : discountType, Number(discountValue) || null)
+    : { discountAmount: savedDiscountAmount, charge: savedCharge }
+
+  function openDiscountForm() {
+    setDiscountType(consultation.discountType ?? 'none')
+    setDiscountValue(consultation.discountValue != null ? String(consultation.discountValue) : '')
+    setDiscountFormOpen(true)
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-4 shadow-sm">
       <CardHeader
         label="Consultation"
         date={consultation.consultDate}
+        charge={savedCharge}
         discountLabel={discountLabel(consultation.discountType, consultation.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
@@ -652,7 +728,7 @@ function ConsultationBillingCard({
                 </tr>
               )}
               <tr className="border-t border-rule">
-                <td className="pr-6 pt-1 text-ink-soft">Charge</td>
+                <td className="pr-6 pt-1 text-ink-soft">Total amount</td>
                 <td className="pt-1 text-right font-medium text-ink">{formatINR(charge)}</td>
               </tr>
             </tbody>
@@ -660,8 +736,10 @@ function ConsultationBillingCard({
 
           {discountFormOpen ? (
             <DiscountForm
-              current={consultation}
-              baseAmount={fee}
+              type={discountType}
+              value={discountValue}
+              onTypeChange={setDiscountType}
+              onValueChange={setDiscountValue}
               onSave={async (discount) => {
                 await updateConsultationDiscount(consultation.id, discount)
                 setDiscountFormOpen(false)
@@ -670,9 +748,15 @@ function ConsultationBillingCard({
               onCancel={() => setDiscountFormOpen(false)}
             />
           ) : (
-            <Button variant="secondary" onClick={() => setDiscountFormOpen(true)}>
+            <Button variant="secondary" onClick={openDiscountForm}>
               {consultation.discountType ? 'Edit discount' : '+ Add discount'}
             </Button>
+          )}
+
+          {invoice && (
+            <p className="text-[12px] text-ink-faint">
+              Invoice generated — {formatINR(invoice.finalTotal)} via {invoice.paymentMode.toUpperCase()}
+            </p>
           )}
         </div>
       )}
@@ -696,15 +780,30 @@ function TreatmentBillingCard({
   const { updateTreatmentDiscount } = useClinic()
   const [expanded, setExpanded] = useState(false)
   const [discountFormOpen, setDiscountFormOpen] = useState(false)
+  const [discountType, setDiscountType] = useState<'none' | 'percent' | 'amount'>(treatment.discountType ?? 'none')
+  const [discountValue, setDiscountValue] = useState(treatment.discountValue != null ? String(treatment.discountValue) : '')
 
   const serviceLabel = serviceName(treatment.serviceId)
-  const { servicePrice, discountAmount, charge } = treatmentCharge(treatment)
+  const { servicePrice, discountAmount: savedDiscountAmount, charge: savedCharge } = treatmentCharge(treatment)
+
+  // While the discount form is open, the table below shows a live preview of
+  // what Save will produce; closed, it falls back to the last-saved figures.
+  const { discountAmount, charge } = discountFormOpen
+    ? applyDiscount(servicePrice, discountType === 'none' ? null : discountType, Number(discountValue) || null)
+    : { discountAmount: savedDiscountAmount, charge: savedCharge }
+
+  function openDiscountForm() {
+    setDiscountType(treatment.discountType ?? 'none')
+    setDiscountValue(treatment.discountValue != null ? String(treatment.discountValue) : '')
+    setDiscountFormOpen(true)
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-4 shadow-sm">
       <CardHeader
         label={serviceLabel}
         date={treatment.startedAt}
+        charge={savedCharge}
         discountLabel={discountLabel(treatment.discountType, treatment.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
@@ -725,7 +824,7 @@ function TreatmentBillingCard({
                 </tr>
               )}
               <tr className="border-t border-rule">
-                <td className="pr-6 pt-1 text-ink-soft">Charge</td>
+                <td className="pr-6 pt-1 text-ink-soft">Total amount</td>
                 <td className="pt-1 text-right font-medium text-ink">{formatINR(charge)}</td>
               </tr>
             </tbody>
@@ -733,8 +832,10 @@ function TreatmentBillingCard({
 
           {discountFormOpen ? (
             <DiscountForm
-              current={treatment}
-              baseAmount={servicePrice}
+              type={discountType}
+              value={discountValue}
+              onTypeChange={setDiscountType}
+              onValueChange={setDiscountValue}
               onSave={async (discount) => {
                 await updateTreatmentDiscount(treatment.id, discount)
                 setDiscountFormOpen(false)
@@ -743,7 +844,7 @@ function TreatmentBillingCard({
               onCancel={() => setDiscountFormOpen(false)}
             />
           ) : (
-            <Button variant="secondary" onClick={() => setDiscountFormOpen(true)}>
+            <Button variant="secondary" onClick={openDiscountForm}>
               {treatment.discountType ? 'Edit discount' : '+ Add discount'}
             </Button>
           )}
@@ -759,35 +860,27 @@ function TreatmentBillingCard({
   )
 }
 
-/** Shared by both TreatmentBillingCard and ConsultationBillingCard — `current`
- * just needs to carry the existing discount, if any, to pre-fill the form. */
+/** Shared by both TreatmentBillingCard and ConsultationBillingCard.
+ * Controlled by the parent (type/value live there, not here) so the parent's
+ * Discount/Total amount rows above can update live, on every keystroke,
+ * instead of only after Save. */
 function DiscountForm({
-  current,
-  baseAmount,
+  type,
+  value,
+  onTypeChange,
+  onValueChange,
   onSave,
   onCancel,
 }: {
-  current: { discountType?: 'percent' | 'amount' | null; discountValue?: number | null }
-  // The full service charge / consultation fee this discount applies
-  // against — needed to preview the resulting discount and charge live as
-  // the admin types, before they hit Save.
-  baseAmount: number
+  type: 'none' | 'percent' | 'amount'
+  value: string
+  onTypeChange: (type: 'none' | 'percent' | 'amount') => void
+  onValueChange: (value: string) => void
   onSave: (discount: { type: 'percent' | 'amount'; value: number } | null) => Promise<void>
   onCancel: () => void
 }) {
-  const [type, setType] = useState<'none' | 'percent' | 'amount'>(current.discountType ?? 'none')
-  const [value, setValue] = useState(current.discountValue != null ? String(current.discountValue) : '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const numericValue = Number(value)
-  const hasValidPreview = type !== 'none' && numericValue > 0
-  let previewDiscount = 0
-  if (hasValidPreview) {
-    previewDiscount = type === 'percent' ? baseAmount * (numericValue / 100) : numericValue
-    previewDiscount = Math.min(previewDiscount, baseAmount)
-  }
-  const previewCharge = baseAmount - previewDiscount
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
@@ -818,8 +911,8 @@ function DiscountForm({
         options={['none', 'percent', 'amount']}
         value={type}
         onChange={(e) => {
-          setType(e.target.value as typeof type)
-          setValue('')
+          onTypeChange(e.target.value as typeof type)
+          onValueChange('')
         }}
         className="w-32"
       />
@@ -830,16 +923,10 @@ function DiscountForm({
           min="0"
           max={type === 'percent' ? '100' : undefined}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => onValueChange(e.target.value)}
           placeholder={type === 'percent' ? '10' : '500'}
           className="w-32"
         />
-      )}
-      {hasValidPreview && (
-        <p className="w-full text-[13px] text-ink-soft">
-          Discount <span className="font-medium text-crit">&minus;{formatINR(previewDiscount)}</span> · charge becomes{' '}
-          <span className="font-medium text-ink">{formatINR(previewCharge)}</span>
-        </p>
       )}
       {error && <p className="w-full text-[13px] text-crit">{error}</p>}
       <Button type="submit" disabled={submitting}>

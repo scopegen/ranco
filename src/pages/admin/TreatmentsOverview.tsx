@@ -79,7 +79,7 @@ export function TreatmentsOverview() {
                     {treatment.status === 'finished' ? (
                       <Pill variant="solid">Finished</Pill>
                     ) : (
-                      <Pill variant="outline">Ongoing</Pill>
+                      <Pill variant="success">Ongoing</Pill>
                     )}
                   </td>
                 </tr>

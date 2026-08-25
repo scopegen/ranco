@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react'
 
-type Variant = 'solid' | 'outline' | 'crit' | 'accent'
+type Variant = 'solid' | 'outline' | 'crit' | 'accent' | 'success' | 'warning'
 
 const variants: Record<Variant, string> = {
   solid: 'bg-accent-deep text-white',
   outline: 'bg-transparent border border-rule text-ink-soft',
   crit: 'bg-crit-soft text-crit',
   accent: 'bg-accent-tint text-accent-deep',
+  success: 'bg-ok-soft text-ok',
+  warning: 'bg-warn-soft text-warn',
 }
 
 export function Pill({ variant = 'outline', children }: { variant?: Variant; children: ReactNode }) {

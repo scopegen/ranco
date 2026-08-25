@@ -401,8 +401,7 @@ export function NewPatient() {
         </div>
 
         <div className="flex flex-col gap-5">
-          <div className="flex items-center justify-between gap-3 border-b border-rule pb-2">
-            <h2 className="text-subheading font-medium text-ink">Physical &amp; medical details</h2>
+          <div className="flex justify-end border-b border-rule pb-2">
             <Button
               type="button"
               variant="secondary"
@@ -463,10 +462,7 @@ export function NewPatient() {
           )}
         </div>
 
-        <div className="flex items-center gap-3 pt-2">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? (isEditing ? 'Saving…' : 'Adding…') : isEditing ? 'Save changes' : 'Add patient'}
-          </Button>
+        <div className="flex items-center justify-end gap-3 pt-2">
           {isEditing ? (
             <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
               Cancel
@@ -476,6 +472,9 @@ export function NewPatient() {
               Clear
             </Button>
           )}
+          <Button type="submit" disabled={submitting}>
+            {submitting ? (isEditing ? 'Saving…' : 'Adding…') : isEditing ? 'Save changes' : 'Add patient'}
+          </Button>
         </div>
       </form>
       </div>

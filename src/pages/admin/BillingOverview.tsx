@@ -52,15 +52,17 @@ export function BillingOverview() {
         }))
 
         for (const invoice of invoices) {
-          // An invoice can cover several treatments picked together —
-          // list each one's service by name.
-          const serviceLabels = invoice.lines
-            .map((line) => treatments.find((t) => t.id === line.treatmentId)?.serviceId)
-            .filter((id): id is string => Boolean(id))
-            .map((id) => serviceName(id))
+          // An invoice can cover several treatments and/or consultations
+          // picked together — list each one's service (or "Consultation")
+          // by name.
+          const serviceLabels = invoice.lines.map((line) =>
+            line.treatmentId
+              ? serviceName(treatments.find((t) => t.id === line.treatmentId)?.serviceId)
+              : 'Consultation',
+          )
           patientLines.push({
             date: invoice.issuedAt,
-            label: `Invoice — ${serviceLabels.join(', ') || `${invoice.lines.length} treatment(s)`}`,
+            label: `Invoice — ${serviceLabels.join(', ') || `${invoice.lines.length} item(s)`}`,
             sub: `settled via ${invoice.paymentMode.toUpperCase()}`,
             amount: invoice.finalTotal,
             kind: 'invoice',

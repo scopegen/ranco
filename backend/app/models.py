@@ -2,8 +2,8 @@ import uuid
 from datetime import date, datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Identity, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Enum, ForeignKey, Identity, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -136,7 +136,13 @@ class Consultation(Base):
     doctor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
     consult_date: Mapped[date] = mapped_column(Date, nullable=False)
     fee: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    findings: Mapped[str] = mapped_column(Text, nullable=False)
+    # Renamed from "findings" — same field, clearer clinical label. Existing
+    # rows keep their data (migration renames the column, doesn't drop it).
+    chief_complaint: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    oral_examination: Mapped[str] = mapped_column(Text, nullable=False)
+    # [{"medicine": "...", "frequency": "OD"}, ...] — structured so the
+    # frequency can be a fixed dropdown instead of free text.
+    rx: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, name="payment_status"), nullable=False)
     payment_mode: Mapped[PaymentMode | None] = mapped_column(Enum(PaymentMode, name="payment_mode"))
     # Set when admin records the (one-time, full) consultation payment —
@@ -308,17 +314,26 @@ class Invoice(Base):
 
 
 class InvoiceLine(Base):
-    """One treatment's contribution to an invoice — amount is that
-    treatment's pending balance at the moment the invoice was generated,
-    before the invoice's own discount is applied (the discount is spread
-    proportionally across lines when settling each treatment; see
-    routers/invoices.py). A treatment can appear on at most one invoice."""
+    """One treatment's or one consultation's contribution to an invoice —
+    exactly one of treatment_id/consultation_id is set per line (enforced by
+    the check constraint below). amount is that item's full listed price at
+    the moment the invoice was generated, before the invoice's own discount
+    is applied (the discount is spread proportionally across lines when
+    settling each item; see routers/invoices.py). A treatment or
+    consultation can appear on at most one invoice."""
 
     __tablename__ = "invoice_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "(treatment_id IS NOT NULL) != (consultation_id IS NOT NULL)",
+            name="invoice_line_exactly_one_source",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"), nullable=False)
-    treatment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("treatments.id"), nullable=False, unique=True)
+    treatment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("treatments.id"), unique=True)
+    consultation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("consultations.id"), unique=True)
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")

@@ -285,6 +285,7 @@ def render_history_pdf(
     consultation_charge_by_id: dict,
     treatment_charge_by_id: dict,
     invoice_by_treatment: dict,
+    invoice_by_consultation: dict,
     billing_totals: tuple,
     prescriptions: list,
 ) -> bytes:
@@ -292,8 +293,9 @@ def render_history_pdf(
     service_price, discount_amount, charge) — what this one consultation or
     treatment contributes to the patient's single combined bill (payment
     itself isn't tracked per-item anymore).
-    invoice_by_treatment: treatment_id -> (Invoice, this treatment's line
-    amount on it), only present for treatments that have been invoiced.
+    invoice_by_treatment / invoice_by_consultation: id -> (Invoice, this
+    item's line amount on it), only present for treatments/consultations
+    that have been invoiced.
     billing_totals: (total_billed, total_paid) for the whole patient, from
     the same calculation the Billing tab's summary tiles use."""
 
@@ -309,13 +311,23 @@ def render_history_pdf(
     consult_row_list = []
     for c in sorted(consultations, key=lambda c: c.consult_date, reverse=True):
         _fee, c_discount_amount, c_charge = consultation_charge_by_id.get(c.id, (float(c.fee), 0.0, float(c.fee)))
-        c_discount_note = f" (after &#8377;{c_discount_amount:,.0f} discount)" if c_discount_amount else ""
+        c_discount_note = f" (after Rs. {c_discount_amount:,.0f} discount)" if c_discount_amount else ""
+
+        invoice_line = invoice_by_consultation.get(c.id)
+        c_invoice_note = ""
+        if invoice_line:
+            invoice, line_amount = invoice_line
+            c_invoice_note = (
+                f'<br/><span style="font-size:8pt; color:{INK_SOFT};">Invoice: Rs. {line_amount:,.0f} '
+                f'settled via {invoice.payment_mode.value.upper()} on {invoice.issued_at.strftime("%d %b %Y")}</span>'
+            )
+
         consult_row_list.append(
             f"""<tr>
           <td>{c.consult_date.strftime('%d %b %Y')}</td>
           <td>{_esc(doctor_name(c.doctor_id))}</td>
-          <td>{_esc(c.findings)}</td>
-          <td>&#8377;{c_charge:,.0f}{c_discount_note}</td>
+          <td>{_esc(c.oral_examination)}</td>
+          <td>Rs. {c_charge:,.0f}{c_discount_note}{c_invoice_note}</td>
           <td><span class="pill {'pill-paid' if c.payment_status.value == 'paid' else 'pill-unpaid'}">{c.payment_status.value}</span></td>
         </tr>"""
         )
@@ -323,7 +335,7 @@ def render_history_pdf(
     consult_section = f"""
     <p class="section-title">Consultations</p>
     <table class="rows">
-      <tr><th>Date</th><th>Doctor</th><th>Findings</th><th>Fee</th><th>Status</th></tr>
+      <tr><th>Date</th><th>Doctor</th><th>Oral Examination</th><th>Fee</th><th>Status</th></tr>
       {consult_rows or '<tr><td colspan="5">None recorded.</td></tr>'}
     </table>
     """
@@ -337,10 +349,10 @@ def render_history_pdf(
         visit_rows = "".join(f"<tr><td>{v.visit_date.strftime('%d %b %Y')}</td></tr>" for v in visits)
 
         _service_price, discount_amount, charge = treatment_charge_by_id.get(t.id, (0.0, 0.0, 0.0))
-        discount_note = f" (after &#8377;{discount_amount:,.0f} discount)" if discount_amount else ""
+        discount_note = f" (after Rs. {discount_amount:,.0f} discount)" if discount_amount else ""
         billing_html = (
             f'<p style="font-size:9.5pt;"><span class="label">Charge:</span> '
-            f"&#8377;{charge:,.0f}{discount_note}</p>"
+            f"Rs. {charge:,.0f}{discount_note}</p>"
         )
 
         invoice_line = invoice_by_treatment.get(t.id)
@@ -349,7 +361,7 @@ def render_history_pdf(
             invoice, line_amount = invoice_line
             invoice_html = (
                 f'<p style="font-size:9.5pt;"><span class="label">Invoice:</span> '
-                f"&#8377;{line_amount:,.0f} settled via {invoice.payment_mode.value.upper()} "
+                f"Rs. {line_amount:,.0f} settled via {invoice.payment_mode.value.upper()} "
                 f'on {invoice.issued_at.strftime("%d %b %Y")}</p>'
             )
 
@@ -378,9 +390,9 @@ def render_history_pdf(
     billing_section = f"""
     <p class="section-title">Billing Summary</p>
     <table class="summary">
-      <tr><td class="label">Total billed</td><td class="amt">&#8377;{total_billed:,.0f}</td></tr>
-      <tr><td class="label">Collected</td><td class="amt">&#8377;{total_collected:,.0f}</td></tr>
-      <tr><td class="label">Outstanding</td><td class="amt">&#8377;{outstanding:,.0f}</td></tr>
+      <tr><td class="label">Total billed</td><td class="amt">Rs. {total_billed:,.0f}</td></tr>
+      <tr><td class="label">Collected</td><td class="amt">Rs. {total_collected:,.0f}</td></tr>
+      <tr><td class="label">Outstanding</td><td class="amt">Rs. {outstanding:,.0f}</td></tr>
     </table>
     """
 
@@ -417,15 +429,16 @@ def render_history_pdf(
 
 def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
     """lines: [{'service_name': str, 'doctor_name': str, 'amount': float}, ...]
-    — one per treatment this invoice covers. `amount` is already the exact
-    amount charged for that service (discount, if any, already folded in) —
-    the invoice shows only what was actually charged, never a discount
-    breakdown; discount stays visible only on the Billing tab."""
+    — one per treatment or consultation this invoice covers (a consultation
+    line's service_name is just "Consultation"). `amount` is already the
+    exact amount charged for that item (discount, if any, already folded
+    in) — the invoice shows only what was actually charged, never a
+    discount breakdown; discount stays visible only on the Billing tab."""
     line_rows = "".join(
         f"""<tr>
           <td>{_esc(line['service_name'])}</td>
           <td>Dr. {_esc(_display_doctor_name(line['doctor_name']))}</td>
-          <td>&#8377;{line['amount']:,.0f}</td>
+          <td>Rs. {line['amount']:,.0f}</td>
         </tr>"""
         for line in lines
     )
@@ -443,14 +456,14 @@ def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
         </tr>
       </table>
 
-      <p class="section-title">Treatments billed</p>
+      <p class="section-title">Items billed</p>
       <table class="rows">
         <tr><th>Service</th><th>Doctor</th><th>Amount</th></tr>
-        {line_rows or '<tr><td colspan="3">No treatments on this invoice.</td></tr>'}
+        {line_rows or '<tr><td colspan="3">No items on this invoice.</td></tr>'}
       </table>
 
       <table class="summary" style="margin-top:8px;">
-        <tr><td class="label" style="font-size:11pt;">Amount payable</td><td class="amt" style="font-size:11pt;">&#8377;{float(invoice.final_total):,.0f}</td></tr>
+        <tr><td class="label" style="font-size:11pt;">Amount payable</td><td class="amt" style="font-size:11pt;">Rs. {float(invoice.final_total):,.0f}</td></tr>
       </table>
 
       <p class="disclaimer">This is a system-generated invoice from {CLINIC_NAME}. For billing queries, please contact the clinic directly.</p>

@@ -58,6 +58,17 @@ def download_history_pdf(
 
     consultation_charge_by_id: dict = {c.id: _consultation_charge(c) for c in consultations}
 
+    consultation_ids = [c.id for c in consultations]
+    invoice_by_consultation: dict = {}
+    if consultation_ids:
+        lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.consultation_id.in_(consultation_ids))))
+        if lines:
+            invoices = {
+                inv.id: inv for inv in db.scalars(select(Invoice).where(Invoice.id.in_({l.invoice_id for l in lines})))
+            }
+            for line in lines:
+                invoice_by_consultation[line.consultation_id] = (invoices[line.invoice_id], float(line.amount))
+
     treatment_ids = [t.id for t in treatments]
     visits_by_treatment: dict = {}
     treatment_charge_by_id: dict = {}
@@ -96,6 +107,7 @@ def download_history_pdf(
         consultation_charge_by_id,
         treatment_charge_by_id,
         invoice_by_treatment,
+        invoice_by_consultation,
         _patient_billing_totals(db, patient_id),
         prescriptions,
     )
@@ -110,37 +122,68 @@ def download_invoice_pdf(invoice_id: uuid.UUID, db: Session = Depends(get_db), _
 
     lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.invoice_id == invoice_id)))
     if not lines:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice has no treatments")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice has no line items")
 
-    treatments = {
-        t.id: t for t in db.scalars(select(Treatment).where(Treatment.id.in_({l.treatment_id for l in lines})))
-    }
-    first_treatment = next(iter(treatments.values()))
-    patient = db.get(Patient, first_treatment.patient_id)
+    treatment_ids = {l.treatment_id for l in lines if l.treatment_id is not None}
+    consultation_ids = {l.consultation_id for l in lines if l.consultation_id is not None}
+
+    treatments = (
+        {t.id: t for t in db.scalars(select(Treatment).where(Treatment.id.in_(treatment_ids)))}
+        if treatment_ids
+        else {}
+    )
+    consultations = (
+        {c.id: c for c in db.scalars(select(Consultation).where(Consultation.id.in_(consultation_ids)))}
+        if consultation_ids
+        else {}
+    )
+
+    first_patient_id = (
+        next(iter(treatments.values())).patient_id if treatments else next(iter(consultations.values())).patient_id
+    )
+    patient = db.get(Patient, first_patient_id)
 
     service_ids = {t.service_id for t in treatments.values()}
-    doctor_ids = {t.doctor_id for t in treatments.values()}
-    service_by_id = {s.id: s for s in db.scalars(select(Service).where(Service.id.in_(service_ids)))}
-    doctor_by_id = {s.id: s for s in db.scalars(select(Staff).where(Staff.id.in_(doctor_ids)))}
+    doctor_ids = {t.doctor_id for t in treatments.values()} | {c.doctor_id for c in consultations.values()}
+    service_by_id = {s.id: s for s in db.scalars(select(Service).where(Service.id.in_(service_ids)))} if service_ids else {}
+    doctor_by_id = {s.id: s for s in db.scalars(select(Staff).where(Staff.id.in_(doctor_ids)))} if doctor_ids else {}
 
     # New invoices never carry a discount (generate_invoice always leaves
     # discount_total at 0 — see its docstring), so this subtraction is a
-    # no-op for them: line.amount already is the full service price. It's
+    # no-op for them: line.amount already is the full listed price. It's
     # kept only so older invoices generated before that change — which did
     # have a real discount_total, spread proportionally across lines —
     # still print the amount actually settled, not the pre-discount figure.
     listed_total = float(invoice.listed_total)
     discount_total = float(invoice.discount_total)
-    pdf_lines = [
-        {
-            "service_name": service_by_id[t.service_id].name if t.service_id in service_by_id else "Unknown",
-            "doctor_name": doctor_by_id[t.doctor_id].name if t.doctor_id in doctor_by_id else "Unknown",
-            "amount": float(line.amount)
-            - (float(line.amount) / listed_total * discount_total if listed_total else 0.0),
-        }
-        for line in lines
-        if (t := treatments.get(line.treatment_id)) is not None
-    ]
+
+    def settled_amount(raw: float) -> float:
+        return raw - (raw / listed_total * discount_total if listed_total else 0.0)
+
+    pdf_lines = []
+    for line in lines:
+        if line.treatment_id is not None:
+            t = treatments.get(line.treatment_id)
+            if t is None:
+                continue
+            pdf_lines.append(
+                {
+                    "service_name": service_by_id[t.service_id].name if t.service_id in service_by_id else "Unknown",
+                    "doctor_name": doctor_by_id[t.doctor_id].name if t.doctor_id in doctor_by_id else "Unknown",
+                    "amount": settled_amount(float(line.amount)),
+                }
+            )
+        elif line.consultation_id is not None:
+            c = consultations.get(line.consultation_id)
+            if c is None:
+                continue
+            pdf_lines.append(
+                {
+                    "service_name": "Consultation",
+                    "doctor_name": doctor_by_id[c.doctor_id].name if c.doctor_id in doctor_by_id else "Unknown",
+                    "amount": settled_amount(float(line.amount)),
+                }
+            )
 
     content = pdf.render_invoice_pdf(patient, pdf_lines, invoice)
     return _pdf_response(content, f"invoice-{pdf.patient_id_str(patient.patient_number)}-{invoice_id.hex[:8]}.pdf")
