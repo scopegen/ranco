@@ -19,32 +19,29 @@ interface Props {
 
 interface PendingItem {
   consultation: Consultation
-  // The specific recommended service this prompt is for — undefined for a
-  // consultation that recommended nothing (falls back to "start one
-  // treatment, any service", the old single-treatment behaviour).
-  serviceId?: string
+  // The specific recommended service this prompt is for — a consultation
+  // that recommended nothing doesn't get a prompt at all (there'd be
+  // nothing to start), so this is always a real service now.
+  serviceId: string
 }
 
 export function TreatmentsTab({ patient, data, onChange }: Props) {
-  // A consultation moves here, as an actionable "start treatment" prompt,
-  // the moment it's saved — the doctor no longer starts a treatment from
-  // inside the consultation itself. A consultation can recommend several
-  // services; each one that doesn't have a treatment yet gets its own
-  // prompt, independent of the others, so starting one doesn't hide the
-  // rest.
+  // A consultation with a recommended service moves here, as an actionable
+  // "start treatment" prompt, the moment it's saved — the doctor no longer
+  // starts a treatment from inside the consultation itself. A consultation
+  // can recommend several services; each one that doesn't have a treatment
+  // yet gets its own prompt, independent of the others, so starting one
+  // doesn't hide the rest. A consultation that recommended nothing just
+  // doesn't show up here.
   const pendingItems: PendingItem[] = []
   for (const consultation of data.consultations) {
     const startedServiceIds = new Set(
       data.treatments.filter((t) => t.consultationId === consultation.id).map((t) => t.serviceId),
     )
-    if (consultation.recommendedServiceIds.length > 0) {
-      for (const serviceId of consultation.recommendedServiceIds) {
-        if (!startedServiceIds.has(serviceId)) {
-          pendingItems.push({ consultation, serviceId })
-        }
+    for (const serviceId of consultation.recommendedServiceIds) {
+      if (!startedServiceIds.has(serviceId)) {
+        pendingItems.push({ consultation, serviceId })
       }
-    } else if (startedServiceIds.size === 0) {
-      pendingItems.push({ consultation })
     }
   }
   pendingItems.sort((a, b) => b.consultation.consultDate.localeCompare(a.consultation.consultDate))
@@ -77,7 +74,7 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
       {ongoingTreatments.map(renderTreatmentCard)}
       {pendingItems.map((item) => (
         <StartTreatmentCard
-          key={`${item.consultation.id}-${item.serviceId ?? 'none'}`}
+          key={`${item.consultation.id}-${item.serviceId}`}
           consultation={item.consultation}
           recommendedServiceId={item.serviceId}
           onChange={onChange}
@@ -94,13 +91,13 @@ function StartTreatmentCard({
   onChange,
 }: {
   consultation: Consultation
-  recommendedServiceId?: string
+  recommendedServiceId: string
   onChange: () => void
 }) {
   const { doctors, services, doctorName, serviceName, startTreatment, updateConsultation } = useClinic()
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [serviceId, setServiceId] = useState(recommendedServiceId ?? services[0]?.id)
+  const [serviceId, setServiceId] = useState(recommendedServiceId)
   const [doctorId, setDoctorId] = useState(consultation.doctorId ?? doctors[0]?.id)
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
@@ -120,13 +117,9 @@ function StartTreatmentCard({
     }
   }
 
-  // Only meaningful when this prompt is for one specific recommended
-  // service — just drops that service from the consultation's recommended
-  // list, same "full replace" pattern the edit-consultation form already
-  // uses. Nothing to remove for the no-specific-service fallback prompt
-  // (it'd mean deleting the consultation itself, out of scope here).
+  // Drops this service from the consultation's recommended list — same
+  // "full replace" pattern the edit-consultation form already uses.
   async function handleRemove() {
-    if (!recommendedServiceId) return
     if (!window.confirm(`Remove "${serviceName(recommendedServiceId)}" from this consultation's recommended treatments?`)) return
     setRemoving(true)
     setRemoveError(null)
@@ -154,9 +147,7 @@ function StartTreatmentCard({
     <div className="flex flex-col gap-3 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-subheading font-medium text-ink">
-            {recommendedServiceId ? serviceName(recommendedServiceId) : 'Consultation'}
-          </p>
+          <p className="text-subheading font-medium text-ink">{serviceName(recommendedServiceId)}</p>
           <p className="text-[12px] text-ink-faint">
             {doctorName(consultation.doctorId)} &middot; consulted {formatDate(consultation.consultDate)}
           </p>
@@ -172,18 +163,16 @@ function StartTreatmentCard({
           <Button variant="secondary" onClick={() => setFormOpen(true)}>
             Start treatment
           </Button>
-          {recommendedServiceId && (
-            <button
-              type="button"
-              onClick={handleRemove}
-              disabled={removing}
-              aria-label="Remove recommended treatment"
-              title="Remove recommended treatment"
-              className="flex items-center justify-center rounded-lg bg-white p-2.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleRemove}
+            disabled={removing}
+            aria-label="Remove recommended treatment"
+            title="Remove recommended treatment"
+            className="flex items-center justify-center rounded-lg bg-white p-2.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       )}
       {removeError && <p className="text-[13px] text-crit">{removeError}</p>}
