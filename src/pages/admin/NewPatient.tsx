@@ -109,6 +109,7 @@ export function NewPatient() {
   const [conditionOptions, setConditionOptions] = useState<string[]>([])
   const [sectorOptions, setSectorOptions] = useState<string[]>([])
   const [showPhysicalDetails, setShowPhysicalDetails] = useState(false)
+  const [showMedicalDetails, setShowMedicalDetails] = useState(false)
   const { patients, loading: patientsLoading, addPatient, editPatient } = usePatients()
   const navigate = useNavigate()
 
@@ -130,13 +131,11 @@ export function NewPatient() {
       setDraft(toDraft(editingPatient))
       // Don't hide data the patient already has on file behind an extra
       // click — only new/blank entries start collapsed.
-      if (
-        editingPatient.height ||
-        editingPatient.weight ||
-        editingPatient.medicalConditions.length > 0 ||
-        editingPatient.medicalHistory
-      ) {
+      if (editingPatient.height || editingPatient.weight) {
         setShowPhysicalDetails(true)
+      }
+      if (editingPatient.medicalConditions.length > 0 || editingPatient.medicalHistory) {
+        setShowMedicalDetails(true)
       }
     }
   }, [editingPatient])
@@ -401,38 +400,56 @@ export function NewPatient() {
         </div>
 
         <div className="flex flex-col gap-5">
-          <div className="flex justify-end border-b border-rule pb-2">
+          <div className="flex items-center justify-between border-b border-rule pb-2">
+            <span className="text-body font-medium text-ink">Physical details</span>
             <Button
               type="button"
               variant="secondary"
               className="flex items-center gap-1.5"
               onClick={() => setShowPhysicalDetails((v) => !v)}
+              
             >
-              {showPhysicalDetails ? 'Show less' : 'Show more'}
+              {showPhysicalDetails ? 'Show less' : 'More details'}
               {showPhysicalDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </Button>
           </div>
           {showPhysicalDetails && (
-            <div className="flex flex-col gap-5">
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <Field
-                  label="Height"
-                  type="number"
-                  min="0"
-                  value={draft.height}
-                  onChange={(e) => update('height', e.target.value)}
-                  placeholder="165 cm"
-                />
-                <Field
-                  label="Weight"
-                  type="number"
-                  min="0"
-                  value={draft.weight}
-                  onChange={(e) => update('weight', e.target.value)}
-                  placeholder="62 kg"
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field
+                label="Height"
+                type="number"
+                min="0"
+                value={draft.height}
+                onChange={(e) => update('height', e.target.value)}
+                placeholder="165 cm"
+              />
+              <Field
+                label="Weight"
+                type="number"
+                min="0"
+                value={draft.weight}
+                onChange={(e) => update('weight', e.target.value)}
+                placeholder="62 kg"
+              />
+            </div>
+          )}
+        </div>
 
+        <div className="flex flex-col gap-5">
+          <div className="flex items-center justify-between border-b border-rule pb-2">
+            <span className="text-body font-medium text-ink">Medical details</span>
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex items-center gap-1.5"
+              onClick={() => setShowMedicalDetails((v) => !v)}
+            >
+              {showMedicalDetails ? 'Show less' : 'More details'}
+              {showMedicalDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </Button>
+          </div>
+          {showMedicalDetails && (
+            <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-2">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-body font-medium text-ink">Medical conditions</span>

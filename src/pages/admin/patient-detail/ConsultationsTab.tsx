@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react'
-import { ChevronDown, Download, Eye, Pill, Plus, X } from 'lucide-react'
+import { ChevronDown, Download, Eye, Plus, X } from 'lucide-react'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
@@ -360,7 +360,8 @@ export function PrescriptionBadge({ prescription }: { prescription: Prescription
           aria-hidden="true"
           title="Prescription"
         >
-          <Pill size={14} />
+          Prescription
+          {/* <Pill size={14} /> */}
         </span>
         <button
           type="button"
@@ -430,9 +431,10 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
       })
       // The prescription is just the diagnosis/rx/advice/next-visit fields
       // on this same form — one save, no separate "add prescription" step.
-      // Skipped entirely when no medicine was entered (nothing to prescribe).
+      // Skipped only when literally nothing prescription-related was
+      // entered — a medicine isn't required on its own (e.g. advice-only).
       const notes = formatRx(input.rx)
-      if (notes !== '') {
+      if (notes !== '' || input.diagnosis || input.advice || input.nextVisit) {
         await addPrescription({
           patientId: patient.id,
           consultationId: created.id,
@@ -591,7 +593,7 @@ function ConsultationCard({
   const [editOpen, setEditOpen] = useState(false)
 
   return (
-    <div className="flex flex-col gap-0 rounded-xl border border-rule bg-white p-5 shadow-sm">
+    <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <p className="text-subheading font-medium text-ink">{doctorName(consultation.doctorId)}</p>
@@ -605,7 +607,7 @@ function ConsultationCard({
             editOpen ? 'bg-accent-tint' : 'hover:bg-accent-tint'
           }`}
         >
-          {editOpen ? 'Hide' : 'View'}
+          View/Hide
         </button>
       </div>
 
@@ -701,7 +703,8 @@ function EditConsultationForm({
       // The prescription is just these same diagnosis/rx/advice/next-visit
       // fields, kept in sync with this one form — no separate prescription
       // step. Update the existing entry if there is one; otherwise create
-      // one now if medicine was just added; do nothing if there's still none.
+      // one now if any of those fields has content (a medicine isn't
+      // required on its own); do nothing if there's still nothing to save.
       const notes = formatRx(filteredRx)
       if (prescription) {
         await editPrescription(prescription.id, {
@@ -710,7 +713,7 @@ function EditConsultationForm({
           advice: advice || undefined,
           nextVisit: nextVisit || undefined,
         })
-      } else if (notes !== '') {
+      } else if (notes !== '' || diagnosis || advice || nextVisit) {
         await addPrescription({
           patientId: consultation.patientId,
           consultationId: consultation.id,

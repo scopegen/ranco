@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Search, Calendar, X } from 'lucide-react'
 import { Button } from '../../components/Button'
 import { usePatients } from '../../state/PatientsContext'
@@ -37,6 +37,7 @@ const DATE_PRESETS: { label: string; range: () => [string, string] }[] = [
 export function PatientList() {
   const { patients, loading, error } = usePatients()
   const location = useLocation()
+  const navigate = useNavigate()
   const justAdded = (location.state as { justAdded?: string } | null)?.justAdded
   const [query, setQuery] = useState('')
   const [fromDate, setFromDate] = useState('')
@@ -221,21 +222,30 @@ export function PatientList() {
             <table className="w-full text-left sm:min-w-[560px]">
               <thead>
                 <tr className="border-b border-rule">
-                  <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Patient ID</th>
-                  <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Name</th>
-                  <th className="hidden px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:table-cell">Phone</th>
-                  <th className="hidden px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:table-cell">Age</th>
-                  <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Actions</th>
+                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">Patient ID</th>
+                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">Name</th>
+                  <th className="hidden px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft sm:table-cell">Phone</th>
+                  <th className="hidden px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft sm:table-cell">Age</th>
+                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPatients.map((patient) => {
                   const age = calculateAge(patient.dob, patient.birthYear)
+                  const overviewPath = `/admin/patients/${formatPatientId(patient.patientNumber)}`
                   return (
-                    <tr key={patient.id} className="border-b border-rule last:border-none">
+                    <tr
+                      key={patient.id}
+                      onClick={() => navigate(overviewPath)}
+                      className="cursor-pointer border-b border-rule transition-colors last:border-none hover:bg-accent-tint/40"
+                    >
                       <td className="px-4 py-3 font-mono text-[13px] text-ink-soft">{formatPatientId(patient.patientNumber)}</td>
                       <td className="px-4 py-3">
-                        <Link to={`/admin/patients/${formatPatientId(patient.patientNumber)}`} className="font-medium text-ink hover:text-accent-deep">
+                        <Link
+                          to={overviewPath}
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-medium text-ink hover:text-accent-deep"
+                        >
                           {patient.name}
                         </Link>
                       </td>
@@ -244,10 +254,11 @@ export function PatientList() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <Link
-                            to={`/admin/patients/${formatPatientId(patient.patientNumber)}/treatments`}
+                            to={`${overviewPath}/treatments`}
+                            onClick={(e) => e.stopPropagation()}
                             aria-label={`View treatments for ${patient.name}`}
                             title="View treatments"
-                            className="rounded-md border border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint"
+                            className="rounded-md border border-accent bg-accent-tint px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent hover:text-white"
                           >
                             View
                           </Link>

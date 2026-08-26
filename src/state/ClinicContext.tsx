@@ -115,6 +115,7 @@ interface ClinicContextValue {
   ) => Promise<Invoice>
   listInvoices: (patientId: string) => Promise<Invoice[]>
   viewInvoicePdf: (invoiceId: string) => Promise<void>
+  saveInvoicePdf: (invoiceId: string, filenameHint?: string) => Promise<void>
 
   addPrescription: (input: {
     patientId: string
@@ -426,6 +427,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         viewPrescriptionPdf: clinicalApi.viewPrescriptionPdf,
         savePrescriptionPdf: clinicalApi.savePrescriptionPdf,
         viewInvoicePdf: clinicalApi.viewInvoicePdf,
+        saveInvoicePdf: clinicalApi.saveInvoicePdf,
       }}
     >
       {children}

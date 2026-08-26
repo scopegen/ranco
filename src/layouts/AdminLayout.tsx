@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { CircleUserRound, LogOut, Package, Receipt, Stethoscope, UserCog, Users } from 'lucide-react'
+import { CircleUserRound, LogOut, Package, Stethoscope, UserCog, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../state/AuthContext'
 import { QuickAddMenu } from '../components/QuickAddMenu'
@@ -8,7 +8,6 @@ import { isPatientDetailPath } from '../lib/patientRoutes'
 const navItems = [
   { to: '/admin/patients', label: 'Patients', icon: Users, adminOnly: false },
   { to: '/admin/treatments', label: 'Treatments', icon: Stethoscope, adminOnly: false },
-  { to: '/admin/billing', label: 'Billing', icon: Receipt, adminOnly: true },
   { to: '/admin/services', label: 'Services', icon: Package, adminOnly: true },
   { to: '/admin/doctors', label: 'Doctors', icon: UserCog, adminOnly: true },
 ]
@@ -88,7 +87,16 @@ export function AdminLayout() {
           </nav>
         </aside>
 
-        <main className={`flex-1 md:pb-0 ${hideMobileNav ? 'pb-0' : 'pb-20'}`}>
+        {/* Bottom padding reserves room below the last row of content so it
+            can clear the fixed QuickAddMenu "+" button — and, on the patient
+            Overview page, the "Edit patient" pencil sitting in that same
+            corner — which otherwise sit right on top of the last item in any
+            list, unreachable even by scrolling further. Sized to each
+            breakpoint's actual FAB position (see QuickAddMenu's own bottom
+            offset logic): on patient-detail pages the FAB sits close to the
+            bottom edge since the mobile tab bar is hidden there; everywhere
+            else it sits higher, above that tab bar. */}
+        <main className={`flex-1 md:pb-28 ${hideMobileNav ? 'pb-24' : 'pb-40'}`}>
           <Outlet />
         </main>
       </div>

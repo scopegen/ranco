@@ -401,27 +401,22 @@ function LogVisitForm({
   const [rx, setRx] = useState<RxItem[]>([])
   const [advice, setAdvice] = useState('')
   const [nextVisit, setNextVisit] = useState('')
-  const [rxError, setRxError] = useState<string | null>(null)
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
-    setRxError(null)
-    const notes = formatRx(rx)
-    if (addRx && notes === '') {
-      setRxError('Add at least one medicine.')
-      return
-    }
     setSubmitting(true)
     try {
       // No price/payment info collected here at all — billing happens
       // separately, on its own track. The amount is derived automatically
-      // from the treatment's service by the caller.
+      // from the treatment's service by the caller. A medicine isn't
+      // required — a visit can be logged with just advice/next-visit notes
+      // and no new prescription-worthy medicine.
       await onSubmit({
         visitDate,
         prescription: addRx
           ? {
               diagnosis: diagnosis || undefined,
-              notes,
+              notes: formatRx(rx),
               advice: advice || undefined,
               nextVisit: nextVisit || undefined,
             }
@@ -444,7 +439,6 @@ function LogVisitForm({
         <div className="flex flex-col gap-4 rounded-lg bg-white p-4">
           <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
           <RxRowsField value={rx} onChange={setRx} />
-          {rxError && <p className="text-[13px] text-crit">{rxError}</p>}
           <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
           <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
         </div>

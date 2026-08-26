@@ -147,6 +147,7 @@ interface RawInvoiceLine {
 
 interface RawInvoice {
   id: string
+  invoice_number: number
   listed_total: number
   discount_type: 'percent' | 'amount' | null
   discount_value: number | null
@@ -298,6 +299,7 @@ const toVisit = (r: RawVisit): Visit => ({
 
 const toInvoice = (r: RawInvoice): Invoice => ({
   id: r.id,
+  invoiceNumber: r.invoice_number,
   listedTotal: r.listed_total,
   discountType: r.discount_type,
   discountValue: r.discount_value,
@@ -485,6 +487,7 @@ export const clinicalApi = {
   getBillingHistory: (patientId: string) =>
     api.get<RawBillingHistoryEvent[]>(`/patients/${patientId}/billing-history`).then((rs) => rs.map(toBillingHistoryEvent)),
   viewInvoicePdf: (invoiceId: string) => viewPdf(`/invoices/${invoiceId}/pdf`),
+  saveInvoicePdf: (invoiceId: string, filenameHint?: string) => savePdf(`/invoices/${invoiceId}/pdf`, filenameHint),
 
   // prescriptions
   listPrescriptionsForPatient: (patientId: string) =>

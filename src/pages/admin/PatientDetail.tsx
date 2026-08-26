@@ -189,7 +189,9 @@ export function PatientDetail() {
           </header>
         ) : (
           <header className="flex flex-col gap-2">
-            <h1>{patient.name}</h1>
+            <Link to={`/admin/patients/${formatPatientId(patient.patientNumber)}`} className="w-fit">
+              <h1 className="transition-colors hover:text-accent-deep">{patient.name}</h1>
+            </Link>
             {actionError && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{actionError}</p>}
           </header>
         )}

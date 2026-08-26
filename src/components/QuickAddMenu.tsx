@@ -92,7 +92,13 @@ export function QuickAddMenu() {
           className={`flex flex-col items-end gap-2 transition-all duration-150 ${
             open
               ? 'opacity-100 visible translate-y-0'
-              : 'opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0'
+              : // Hover-to-reveal only above the md breakpoint — mobile browsers
+                // simulate :hover on tap, and this wrapper stays the same size
+                // (invisible, not hidden) even closed, so an unscoped
+                // group-hover would pop the menu open from a tap anywhere
+                // nearby, not just the + button itself. Below md, the button's
+                // own onClick toggle (below) is the only way to open it.
+                'opacity-0 invisible translate-y-1 md:group-hover:opacity-100 md:group-hover:visible md:group-hover:translate-y-0'
           }`}
         >
           <QuickAddOption label="Add consultation" icon={Stethoscope} onClick={() => handleQuickAction('consultation')} />

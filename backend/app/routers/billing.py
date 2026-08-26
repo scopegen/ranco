@@ -162,16 +162,21 @@ def get_billing_history(patient_id: uuid.UUID, db: Session = Depends(get_db), _a
             BillingHistoryEvent(date=p.paid_at, kind="payment", label="Payment", amount=float(p.amount), mode=p.payment_mode)
         )
 
+    consultation_ids = [c.id for c in consultations]
+    invoice_ids: set[uuid.UUID] = set()
     if treatment_ids:
         lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.treatment_id.in_(treatment_ids))))
-        invoice_ids = {line.invoice_id for line in lines}
-        if invoice_ids:
-            for inv in db.scalars(select(Invoice).where(Invoice.id.in_(invoice_ids))):
-                events.append(
-                    BillingHistoryEvent(
-                        date=inv.issued_at, kind="invoice", label="Invoice generated", amount=float(inv.final_total)
-                    )
+        invoice_ids |= {line.invoice_id for line in lines}
+    if consultation_ids:
+        lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.consultation_id.in_(consultation_ids))))
+        invoice_ids |= {line.invoice_id for line in lines}
+    if invoice_ids:
+        for inv in db.scalars(select(Invoice).where(Invoice.id.in_(invoice_ids))):
+            events.append(
+                BillingHistoryEvent(
+                    date=inv.issued_at, kind="invoice", label="Invoice generated", amount=float(inv.final_total)
                 )
+            )
 
     events.sort(key=lambda e: e.date, reverse=True)
     return events

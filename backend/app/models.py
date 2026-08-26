@@ -300,6 +300,10 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id: Mapped[uuid.UUID] = uuid_pk()
+    # Human-readable sequential number shown on the invoice PDF as
+    # "INV-0001" — separate from `id` (the internal UUID primary key, never
+    # shown to anyone), same pattern as Patient.patient_number.
+    invoice_number: Mapped[int] = mapped_column(Integer, Identity(always=False), unique=True, nullable=False)
     listed_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     # discount_type/discount_value are what the staff member actually entered
     # ("10" + percent, or "500" + amount) — kept alongside discount_total (the

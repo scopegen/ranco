@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'tint'
 
 const base =
   'rounded-lg text-body font-medium transition-all duration-150 ease-out ' +
@@ -25,6 +25,10 @@ const variants: Record<Variant, string> = {
   danger:
     'bg-white text-crit border border-crit-soft px-5 py-2.5 ' +
     'hover:bg-crit-soft hover:shadow-[0_6px_16px_-6px_rgba(168,67,58,0.3)]',
+  tint:
+    'bg-accent-tint text-accent-deep border border-accent px-3.5 py-2 ' +
+    'hover:-translate-y-px hover:shadow-[0_6px_16px_-6px_rgba(30,95,140,0.35)] ' +
+    'active:translate-y-0',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

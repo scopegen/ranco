@@ -1,5 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from 'react'
-import { Pencil, X } from 'lucide-react'
+import { Download, Eye, Pencil, X } from 'lucide-react'
 import { useClinic } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate, formatDateTime } from '../../../lib/date'
@@ -43,6 +43,12 @@ function consultationCharge(c: Consultation): { fee: number; discountAmount: num
   const fee = c.fee
   const { discountAmount, charge } = applyDiscount(fee, c.discountType, c.discountValue)
   return { fee, discountAmount, charge }
+}
+
+/** "INV-0016" — the invoice's human-readable sequential number, matching
+ * how it's printed on the invoice PDF itself. */
+function invoiceNumberStr(invoiceNumber: number): string {
+  return `INV-${String(invoiceNumber).padStart(4, '0')}`
 }
 
 /** "10% off" / "₹100 off" for the collapsed card header — undefined when
@@ -364,7 +370,7 @@ function GenerateInvoiceSection({
   serviceName: (id: string | undefined) => string
   onChange: () => void
 }) {
-  const { generateInvoice, viewInvoicePdf } = useClinic()
+  const { generateInvoice, viewInvoicePdf, saveInvoicePdf } = useClinic()
   // Invoices show the full listed price, always — a treatment/consultation
   // just needs to not already be on an invoice. Status (ongoing/finished) or
   // payment status no longer matter here since invoicing doesn't touch them.
@@ -373,11 +379,11 @@ function GenerateInvoiceSection({
   const [open, setOpen] = useState(false)
   const [selectedTreatments, setSelectedTreatments] = useState<Set<string>>(new Set())
   const [selectedConsultations, setSelectedConsultations] = useState<Set<string>>(new Set())
-  const [mode, setMode] = useState<PaymentMode>('cash')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generated, setGenerated] = useState<Invoice | null>(null)
   const [viewing, setViewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [viewError, setViewError] = useState<string | null>(null)
 
   if (invoiceableTreatments.length === 0 && invoiceableConsultations.length === 0) return null
@@ -409,7 +415,11 @@ function GenerateInvoiceSection({
     setSubmitting(true)
     setError(null)
     try {
-      const invoice = await generateInvoice(patient.id, [...selectedTreatments], [...selectedConsultations], mode)
+      // Payment mode isn't asked here (or shown on the invoice) — an invoice
+      // is just a record of what's owed, not of how it was actually
+      // settled; that's what Add Payment (on this same tab) is for. The
+      // backend still stores a value, but nothing displays it anymore.
+      const invoice = await generateInvoice(patient.id, [...selectedTreatments], [...selectedConsultations], 'cash')
       setGenerated(invoice)
       setSelectedTreatments(new Set())
       setSelectedConsultations(new Set())
@@ -430,6 +440,19 @@ function GenerateInvoiceSection({
       setViewError(err instanceof Error ? err.message : 'Failed to open the invoice')
     } finally {
       setViewing(false)
+    }
+  }
+
+  async function handleDownload() {
+    if (!generated) return
+    setDownloading(true)
+    setViewError(null)
+    try {
+      await saveInvoicePdf(generated.id, `invoice-${invoiceNumberStr(generated.invoiceNumber)}.pdf`)
+    } catch (err) {
+      setViewError(err instanceof Error ? err.message : 'Failed to download the invoice')
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -487,14 +510,6 @@ function GenerateInvoiceSection({
 
           {selectedCount > 0 && (
             <>
-              <SelectField
-                label="Payment mode"
-                options={['cash', 'card', 'upi']}
-                value={mode}
-                onChange={(e) => setMode(e.target.value as PaymentMode)}
-                className="w-32 uppercase"
-              />
-
               <table className="w-fit text-body">
                 <tbody>
                   <tr>
@@ -530,13 +545,17 @@ function GenerateInvoiceSection({
       {generated && (
         <div className="flex flex-col gap-4 rounded-lg bg-white p-4">
           <p className="text-body text-ink">
-            Invoice generated — <span className="font-medium">{formatINR(generated.finalTotal)}</span> via{' '}
-            {generated.paymentMode.toUpperCase()}.
+            Invoice generated — <span className="font-medium">{formatINR(generated.finalTotal)}</span>.
           </p>
           {viewError && <p className="text-[13px] text-crit">{viewError}</p>}
           <div className="flex gap-3">
-            <Button onClick={handleView} disabled={viewing}>
-              {viewing ? 'Opening…' : 'View invoice'}
+            <Button variant="tint" onClick={handleView} disabled={viewing} className="flex items-center gap-1.5">
+              <Eye size={16} />
+              <span className="hidden md:inline">{viewing ? 'Opening…' : 'View invoice'}</span>
+            </Button>
+            <Button variant="tint" onClick={handleDownload} disabled={downloading} className="flex items-center gap-1.5">
+              <Download size={16} />
+              <span className="hidden md:inline">{downloading ? 'Downloading…' : 'Download'}</span>
             </Button>
             <Button variant="ghost" onClick={handleDone}>
               Done
@@ -580,8 +599,9 @@ function InvoiceRow({
   treatments: Treatment[]
   serviceName: (id: string | undefined) => string
 }) {
-  const { viewInvoicePdf } = useClinic()
+  const { viewInvoicePdf, saveInvoicePdf } = useClinic()
   const [viewing, setViewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const labels = invoice.lines
@@ -602,20 +622,39 @@ function InvoiceRow({
     }
   }
 
+  async function handleDownload() {
+    setDownloading(true)
+    setError(null)
+    try {
+      await saveInvoicePdf(invoice.id, `invoice-${invoiceNumberStr(invoice.invoiceNumber)}.pdf`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download the invoice')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-rule bg-white px-4 py-3 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <span className="text-body font-medium text-ink">{labels || `${invoice.lines.length} item(s)`}</span>
           <span className="text-[12px] text-ink-faint">
-            {formatDateTime(invoice.issuedAt)} &middot; {invoice.paymentMode.toUpperCase()}
+            {invoiceNumberStr(invoice.invoiceNumber)} &middot; {formatDateTime(invoice.issuedAt)}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-end gap-1.5">
           <span className="font-medium text-ink">{formatINR(invoice.finalTotal)}</span>
-          <Button variant="ghost" onClick={handleView} disabled={viewing}>
-            {viewing ? 'Opening…' : 'View'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="tint" onClick={handleView} disabled={viewing} className="flex items-center gap-1.5">
+              <Eye size={16} />
+              <span className="hidden md:inline">{viewing ? 'Opening…' : 'View'}</span>
+            </Button>
+            <Button variant="tint" onClick={handleDownload} disabled={downloading} className="flex items-center gap-1.5">
+              <Download size={16} />
+              <span className="hidden md:inline">{downloading ? 'Downloading…' : 'Download'}</span>
+            </Button>
+          </div>
         </div>
       </div>
       {error && <p className="text-[13px] text-crit">{error}</p>}
@@ -755,7 +794,7 @@ function ConsultationBillingCard({
 
           {invoice && (
             <p className="text-[12px] text-ink-faint">
-              Invoice generated — {formatINR(invoice.finalTotal)} via {invoice.paymentMode.toUpperCase()}
+              Invoice generated — {formatINR(invoice.finalTotal)}
             </p>
           )}
         </div>
@@ -851,7 +890,7 @@ function TreatmentBillingCard({
 
           {invoice && (
             <p className="text-[12px] text-ink-faint">
-              Invoice generated — {formatINR(invoice.finalTotal)} via {invoice.paymentMode.toUpperCase()}
+              Invoice generated — {formatINR(invoice.finalTotal)}
             </p>
           )}
         </div>

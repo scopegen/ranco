@@ -138,6 +138,9 @@ export interface InvoiceLine {
 // One invoice can cover several treatments picked together — see `lines`.
 export interface Invoice {
   id: string
+  // Human-readable sequential number shown on the invoice PDF as "INV-0001"
+  // — the internal `id` above is a UUID and never shown to anyone.
+  invoiceNumber: number
   listedTotal: number
   discountType: 'percent' | 'amount' | null
   discountValue: number | null

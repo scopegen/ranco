@@ -280,6 +280,7 @@ class InvoiceLineOut(BaseModel):
 class InvoiceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
+    invoice_number: int
     listed_total: float
     discount_type: Literal["percent", "amount"] | None
     discount_value: float | None

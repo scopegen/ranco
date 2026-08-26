@@ -88,13 +88,20 @@ body {{ font-family: "Roboto", Helvetica, Arial, sans-serif; font-size: 10pt; co
 #header_content .doctor-specialty {{ font-size: 9pt; color: {INK_SOFT}; margin: 2px 0 0; }}
 #header_content .doctor-reg {{ font-size: 8.5pt; font-weight: bold; color: {INK}; margin: 2px 0 0; }}
 #header_content .letterhead-rule {{ border-bottom: 2px solid {LETTERHEAD_BLUE}; margin: 8px 0 0; }}
+/* Invoice-only header — "Invoice" wordmark on the left, logo + date +
+   invoice number on the right (see _invoice_page_template_html). */
+#header_content .invoice-title-cell {{ vertical-align: middle; }}
+#header_content .invoice-title {{ font-size: 28pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0; }}
+#header_content .invoice-meta-cell {{ vertical-align: top; text-align: right; }}
+#header_content .invoice-meta {{ font-size: 9.5pt; color: {INK_SOFT}; margin: 6px 0 0; }}
+#header_content .invoice-meta-strong {{ font-weight: bold; color: {INK}; }}
 #footer_content .footer-note {{ font-size: 8pt; color: {INK_SOFT}; font-style: italic; text-align: center; margin: 0 0 6px; }}
-#footer_content .contact-footer-rule {{ border-bottom: 2px solid {LETTERHEAD_BLUE}; margin: 0 0 8px; }}
+#footer_content hr.contact-footer-rule {{ border: none; border-top: 2px solid {LETTERHEAD_BLUE}; margin: 0 0 8px; height: 0; }}
 #footer_content table {{ width: 100%; }}
 #footer_content td {{ font-size: 8.5pt; color: {INK_SOFT}; text-align: center; vertical-align: middle; padding: 0 4px; }}
 #footer_content td b {{ color: {INK}; }}
-#footer_content img {{ vertical-align: middle; margin-right: 5px; }}
 .doc-title {{ font-size: 14pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 12px; }}
+.billed-to-label {{ font-size: 9pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; color: {INK_SOFT}; margin: 0 0 8px; }}
 .disclaimer {{ font-size: 8pt; color: {INK_SOFT}; padding-top: 6px; margin-top: 24px; font-style: italic; text-align: center; }}
 hr.section-divider {{ border: none; border-top: 1px solid {RULE}; margin: 6px 0 12px; height: 0; }}
 table.info {{ width: 100%; margin-bottom: 12px; }}
@@ -151,6 +158,10 @@ def patient_id_str(patient_number: int) -> str:
     return f"RANCO-{patient_number:04d}"
 
 
+def invoice_number_str(invoice_number: int) -> str:
+    return f"INV-{invoice_number:04d}"
+
+
 # header_content/footer_content are pulled out of normal flow by the
 # @page frame rules above (matched by id) and stamped onto every page —
 # this is the repeating letterhead template. doc_title stays in the
@@ -164,6 +175,28 @@ def patient_id_str(patient_number: int) -> str:
 # footer_note: an extra line stamped above the contact-info bar on every
 # page — e.g. the prescription's "valid only with signature/stamp" notice.
 # Left unset, the footer is just the contact bar (invoice/history for now).
+def _footer_content_html(footer_note: str | None = None) -> str:
+    """The contact bar every document shares (address/phone/email/website,
+    no icons — dropped per the prescription redesign). footer_note is an
+    optional line stamped above it, e.g. the prescription's signature/stamp
+    notice; left unset (invoice) it's just the bare contact bar."""
+    footer_note_html = f'<p class="footer-note">{_esc(footer_note)}</p>' if footer_note else ""
+    return f"""
+    <div id="footer_content">
+      {footer_note_html}
+      <hr class="contact-footer-rule" />
+      <table>
+        <tr>
+          <td width="25%">{CLINIC_ADDRESS}</td>
+          <td width="25%"><b>{CLINIC_PHONE}</b></td>
+          <td width="25%">{CLINIC_EMAIL}</td>
+          <td width="25%">{CLINIC_WEBSITE}</td>
+        </tr>
+      </table>
+    </div>
+    """
+
+
 def _page_template_html(
     doctor_name: str | None = None,
     doctor_specialty: str | None = None,
@@ -175,7 +208,6 @@ def _page_template_html(
     reg_no = doctor_reg_no if doctor_name else LETTERHEAD_DOCTOR_REG_NO
     specialty_html = f'<p class="doctor-specialty">{_esc(specialty)}</p>' if specialty else ""
     reg_no_html = f'<p class="doctor-reg">Reg. No. {_esc(reg_no)}</p>' if reg_no else ""
-    footer_note_html = f'<p class="footer-note">{_esc(footer_note)}</p>' if footer_note else ""
     return f"""
     <div id="header_content">
       <table>
@@ -193,18 +225,34 @@ def _page_template_html(
       </table>
       <div class="letterhead-rule"></div>
     </div>
-    <div id="footer_content">
-      {footer_note_html}
-      <div class="contact-footer-rule"></div>
+    {_footer_content_html(footer_note)}
+    """
+
+
+# Invoices aren't attributed to one doctor (a single bill can span several
+# treatments/consultations from different doctors), so — unlike every other
+# document — they get their own header instead of the shared doctor
+# letterhead: a plain "Invoice" wordmark on the left, the clinic logo plus
+# the issue date and invoice number on the right. Same footer as everywhere
+# else, just without a footer_note — there's no dosage/signature notice to
+# print on a billing document.
+def _invoice_page_template_html(invoice_number: str, issued_at: datetime) -> str:
+    return f"""
+    <div id="header_content">
       <table>
         <tr>
-          <td width="25%"><img src="{_asset_uri('icon-pin.png')}" width="11" height="11" /> {CLINIC_ADDRESS}</td>
-          <td width="25%"><img src="{_asset_uri('icon-phone.png')}" width="11" height="11" /> <b>{CLINIC_PHONE}</b></td>
-          <td width="25%"><img src="{_asset_uri('icon-mail.png')}" width="11" height="11" /> {CLINIC_EMAIL}</td>
-          <td width="25%"><img src="{_asset_uri('icon-globe.png')}" width="11" height="11" /> {CLINIC_WEBSITE}</td>
+          <td class="invoice-title-cell" width="50%">
+            <p class="invoice-title">Invoice</p>
+          </td>
+          <td class="invoice-meta-cell" width="50%">
+            <img src="{_asset_uri('ranco-logo.png')}" width="130" height="32.5" />
+            <p class="invoice-meta">Date: <span class="invoice-meta-strong">{issued_at.strftime('%d %b %Y')}</span></p>
+            <p class="invoice-meta">Invoice No: <span class="invoice-meta-strong">{_esc(invoice_number)}</span></p>
+          </td>
         </tr>
       </table>
     </div>
+    {_footer_content_html()}
     """
 
 
@@ -263,6 +311,22 @@ def _prescription_patient_info_html(patient) -> str:
         ]
     )
     return f'<table class="field-table-2col">{rows}</table>'
+
+
+def _invoice_billed_to_html(patient) -> str:
+    """Name/Email/Phone/Address as a "Billed To" block — same aligned
+    single-column field-table used elsewhere, email only shown when the
+    patient actually has one on file."""
+    rows = [_field_row("Name", _esc(patient.name))]
+    if patient.email:
+        rows.append(_field_row("Email", _esc(patient.email)))
+    rows.append(_field_row("Phone", _esc(patient.phone)))
+    address = _esc(", ".join(p for p in [patient.sector, patient.city] if p)) or "&mdash;"
+    rows.append(_field_row("Address", address))
+    return f"""
+    <p class="billed-to-label">Billed To</p>
+    <table class="field-table">{"".join(rows)}</table>
+    """
 
 
 def _display_doctor_name(name: str) -> str:
@@ -573,39 +637,32 @@ def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
     exact amount charged for that item (discount, if any, already folded
     in) — the invoice shows only what was actually charged, never a
     discount breakdown; discount stays visible only on the Billing tab."""
+    invoice_number = invoice_number_str(invoice.invoice_number)
     line_rows = "".join(
         f"""<tr>
           <td>{_esc(line['service_name'])}</td>
-          <td>Dr. {_esc(_display_doctor_name(line['doctor_name']))}</td>
           <td>Rs. {line['amount']:,.0f}</td>
         </tr>"""
         for line in lines
     )
+    subtotal = sum(line["amount"] for line in lines)
 
     html = f"""
     <html><head><style>{BASE_CSS}</style></head>
     <body>
-      {_page_template_html()}
-      {_doc_title_html("Invoice")}
-      {_patient_info_html(patient)}
-      <table class="info">
-        <tr>
-          <td width="50%"><span class="label">Invoice date:</span> {invoice.issued_at.strftime('%d %b %Y, %H:%M')}</td>
-          <td width="50%"><span class="label">Payment mode:</span> {invoice.payment_mode.value.upper()}</td>
-        </tr>
-      </table>
-
-      <p class="section-title">Items billed</p>
+      {_invoice_page_template_html(invoice_number, invoice.issued_at)}
+      <hr class="section-divider" />
+      {_invoice_billed_to_html(patient)}
+      <hr class="section-divider" />
       <table class="rows">
-        <tr><th>Service</th><th>Doctor</th><th>Amount</th></tr>
-        {line_rows or '<tr><td colspan="3">No items on this invoice.</td></tr>'}
+        <tr><th>Service</th><th>Amount</th></tr>
+        {line_rows or '<tr><td colspan="2">No items on this invoice.</td></tr>'}
       </table>
 
       <table class="summary" style="margin-top:8px;">
-        <tr><td class="label" style="font-size:11pt;">Amount payable</td><td class="amt" style="font-size:11pt;">Rs. {float(invoice.final_total):,.0f}</td></tr>
+        <tr><td class="label">Subtotal</td><td class="amt">Rs. {subtotal:,.0f}</td></tr>
+        <tr><td class="label" style="font-size:11pt;">Total</td><td class="amt" style="font-size:11pt;">Rs. {float(invoice.final_total):,.0f}</td></tr>
       </table>
-
-      <p class="disclaimer">This is a system-generated invoice from {CLINIC_NAME}. For billing queries, please contact the clinic directly.</p>
     </body></html>
     """
     return _to_pdf(html)
