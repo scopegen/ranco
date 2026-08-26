@@ -30,7 +30,13 @@ interface ClinicContextValue {
   doctorName: (id: string | undefined) => string
   serviceName: (id: string | undefined) => string
 
-  addDoctor: (input: { name: string; specialty?: string; email: string; password: string }) => Promise<Staff>
+  addDoctor: (input: {
+    name: string
+    specialty?: string
+    registrationNo?: string
+    email: string
+    password: string
+  }) => Promise<Staff>
 
   addConsultation: (
     patientId: string,
@@ -137,6 +143,8 @@ interface ClinicContextValue {
   viewHistoryPdf: (patientId: string) => Promise<void>
   savePrescriptionsPdf: (patientId: string, filenameHint?: string) => Promise<void>
   saveHistoryPdf: (patientId: string, filenameHint?: string) => Promise<void>
+  viewPrescriptionPdf: (entryId: string) => Promise<void>
+  savePrescriptionPdf: (entryId: string, filenameHint?: string) => Promise<void>
 }
 
 const ClinicContext = createContext<ClinicContextValue | null>(null)
@@ -161,8 +169,21 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   const doctorName = (id: string | undefined) => doctors.find((d) => d.id === id)?.name ?? '—'
   const serviceName = (id: string | undefined) => services.find((s) => s.id === id)?.name ?? '—'
 
-  async function addDoctor(input: { name: string; specialty?: string; email: string; password: string }) {
-    const created = await clinicalApi.createStaff({ ...input, role: 'doctor' })
+  async function addDoctor(input: {
+    name: string
+    specialty?: string
+    registrationNo?: string
+    email: string
+    password: string
+  }) {
+    const created = await clinicalApi.createStaff({
+      name: input.name,
+      specialty: input.specialty,
+      registration_no: input.registrationNo,
+      email: input.email,
+      password: input.password,
+      role: 'doctor',
+    })
     setDoctors((prev) => [...prev, created])
     return created
   }
@@ -402,6 +423,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         viewHistoryPdf: clinicalApi.viewHistoryPdf,
         savePrescriptionsPdf: clinicalApi.savePrescriptionsPdf,
         saveHistoryPdf: clinicalApi.saveHistoryPdf,
+        viewPrescriptionPdf: clinicalApi.viewPrescriptionPdf,
+        savePrescriptionPdf: clinicalApi.savePrescriptionPdf,
         viewInvoicePdf: clinicalApi.viewInvoicePdf,
       }}
     >

@@ -47,6 +47,7 @@ export function Doctors() {
               <span className="text-body font-medium text-ink">{doctor.name}</span>
               <span className="text-[12px] text-ink-faint">
                 {doctor.specialty ?? 'General Dentistry'} · {doctor.email}
+                {doctor.registrationNo && ` · Reg. No. ${doctor.registrationNo}`}
               </span>
             </div>
           </div>
@@ -61,11 +62,12 @@ function AddDoctorForm({
   onSubmit,
   onCancel,
 }: {
-  onSubmit: (input: { name: string; specialty?: string; email: string; password: string }) => Promise<void>
+  onSubmit: (input: { name: string; specialty?: string; registrationNo?: string; email: string; password: string }) => Promise<void>
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
   const [specialty, setSpecialty] = useState('')
+  const [registrationNo, setRegistrationNo] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -76,7 +78,13 @@ function AddDoctorForm({
     setSubmitting(true)
     setError(null)
     try {
-      await onSubmit({ name, specialty: specialty || undefined, email, password })
+      await onSubmit({
+        name,
+        specialty: specialty || undefined,
+        registrationNo: registrationNo || undefined,
+        email,
+        password,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add doctor')
     } finally {
@@ -89,6 +97,14 @@ function AddDoctorForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Full name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Dr. Priya Nair" />
         <Field label="Specialty" value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="Orthodontist" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field
+          label="Registration No."
+          value={registrationNo}
+          onChange={(e) => setRegistrationNo(e.target.value)}
+          placeholder="A-17490"
+        />
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="drnair@rancodental.com" />

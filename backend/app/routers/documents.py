@@ -44,6 +44,62 @@ def download_prescriptions_pdf(
     return _pdf_response(content, f"prescriptions-{pdf.patient_id_str(patient.patient_number)}.pdf")
 
 
+def _prescribing_doctor_id(db: Session, entry: PrescriptionEntry) -> uuid.UUID:
+    """The doctor a prescription's letterhead/byline should credit — the
+    consultation's or the treatment's own doctor, not whoever happened to be
+    logged in when the entry was saved (often reception/admin, entering it
+    on the doctor's behalf). Falls back to added_by only if neither the
+    consultation nor the visit/treatment can be resolved."""
+    if entry.consultation_id is not None:
+        consultation = db.get(Consultation, entry.consultation_id)
+        if consultation is not None:
+            return consultation.doctor_id
+    if entry.visit_id is not None:
+        visit = db.get(Visit, entry.visit_id)
+        if visit is not None:
+            treatment = db.get(Treatment, visit.treatment_id)
+            if treatment is not None:
+                return treatment.doctor_id
+    return entry.added_by
+
+
+@router.get("/prescriptions/{entry_id}/pdf")
+def download_prescription_entry_pdf(
+    entry_id: uuid.UUID, db: Session = Depends(get_db), _current: Staff = Depends(get_current_staff)
+):
+    """One entry, one PDF — used by the per-consultation and per-visit
+    view/download buttons, as opposed to the combined every-entry document
+    download_prescriptions_pdf above."""
+    entry = db.get(PrescriptionEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prescription not found")
+
+    patient = db.get(Patient, entry.patient_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    doctor = db.get(Staff, _prescribing_doctor_id(db, entry))
+    # Consultations already capture the chief complaint — pull it in here
+    # rather than duplicating the field onto PrescriptionEntry itself.
+    chief_complaint = None
+    if entry.consultation_id is not None:
+        consultation = db.get(Consultation, entry.consultation_id)
+        if consultation is not None:
+            chief_complaint = consultation.chief_complaint
+
+    content = pdf.render_single_prescription_pdf(
+        patient,
+        entry,
+        doctor.name if doctor else "Unknown",
+        doctor.specialty if doctor else None,
+        doctor.registration_no if doctor else None,
+        chief_complaint,
+    )
+    return _pdf_response(
+        content, f"prescription-{pdf.patient_id_str(patient.patient_number)}-{entry_id.hex[:8]}.pdf"
+    )
+
+
 @router.get("/patients/{patient_id}/history/pdf")
 def download_history_pdf(
     patient_id: uuid.UUID, db: Session = Depends(get_db), _current: Staff = Depends(get_current_staff)

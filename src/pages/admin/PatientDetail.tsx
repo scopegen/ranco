@@ -11,7 +11,7 @@ import { formatDate } from '../../lib/date'
 import { Pill } from '../../components/Pill'
 import type { Consultation, Invoice, PatientBillingSummary, PrescriptionEntry, Treatment, Visit } from '../../types/clinical'
 
-type BusyAction = 'view-prescriptions' | 'save-prescriptions' | 'view-history' | null
+type BusyAction = 'view-history' | null
 
 export interface PatientClinicalData {
   consultations: Consultation[]
@@ -37,8 +37,6 @@ export interface PatientDetailContext {
   isAdmin: boolean
   busy: BusyAction
   actionError: string | null
-  handleViewPrescriptions: () => Promise<void>
-  handleSavePrescriptions: () => Promise<void>
   // Kept available even though no button currently triggers it — the "Full
   // History PDF" button was removed from the UI, but the document/feature
   // itself wasn't.
@@ -53,7 +51,7 @@ export function PatientDetail() {
   // since the point of navigating there is the section's own content.
   const isOverview = location.pathname.replace(/\/+$/, '') === `/admin/patients/${code}`
   const { patients, loading: patientsLoading } = usePatients()
-  const { viewPrescriptionsPdf, savePrescriptionsPdf, viewHistoryPdf } = useClinic()
+  const { viewHistoryPdf } = useClinic()
   const { staff } = useAuth()
   const isAdmin = staff?.role === 'admin'
   const patient = useMemo(() => (code ? findPatientByCode(patients, code) : undefined), [patients, code])
@@ -62,32 +60,6 @@ export function PatientDetail() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<BusyAction>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  async function handleViewPrescriptions() {
-    if (!patient) return
-    setBusy('view-prescriptions')
-    setActionError(null)
-    try {
-      await viewPrescriptionsPdf(patient.id)
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to generate the document')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function handleSavePrescriptions() {
-    if (!patient) return
-    setBusy('save-prescriptions')
-    setActionError(null)
-    try {
-      await savePrescriptionsPdf(patient.id, `prescriptions-${formatPatientId(patient.patientNumber)}.pdf`)
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to generate the document')
-    } finally {
-      setBusy(null)
-    }
-  }
 
   async function handleViewHistory() {
     if (!patient) return
@@ -234,8 +206,6 @@ export function PatientDetail() {
                 isAdmin,
                 busy,
                 actionError,
-                handleViewPrescriptions,
-                handleSavePrescriptions,
                 handleViewHistory,
               } satisfies PatientDetailContext
             }

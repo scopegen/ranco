@@ -25,6 +25,7 @@ interface RawStaff {
   name: string
   role: 'admin' | 'doctor'
   specialty: string | null
+  registration_no: string | null
   email: string
 }
 
@@ -187,6 +188,7 @@ const toStaff = (r: RawStaff): Staff => ({
   name: r.name,
   role: r.role,
   specialty: r.specialty,
+  registrationNo: r.registration_no,
   email: r.email,
 })
 
@@ -333,8 +335,14 @@ const toPrescriptionEntry = (r: RawPrescriptionEntry): PrescriptionEntry => ({
 export const clinicalApi = {
   // staff
   listStaff: () => api.get<RawStaff[]>('/staff').then((rs) => rs.map(toStaff)),
-  createStaff: (input: { name: string; role: 'admin' | 'doctor'; specialty?: string; email: string; password: string }) =>
-    api.post<RawStaff>('/staff', input).then(toStaff),
+  createStaff: (input: {
+    name: string
+    role: 'admin' | 'doctor'
+    specialty?: string
+    registration_no?: string
+    email: string
+    password: string
+  }) => api.post<RawStaff>('/staff', input).then(toStaff),
 
   // patients
   listPatients: () => api.get<RawPatient[]>('/patients').then((rs) => rs.map(toPatient)),
@@ -501,4 +509,8 @@ export const clinicalApi = {
   savePrescriptionsPdf: (patientId: string, filenameHint?: string) =>
     savePdf(`/patients/${patientId}/prescriptions/pdf`, filenameHint),
   saveHistoryPdf: (patientId: string, filenameHint?: string) => savePdf(`/patients/${patientId}/history/pdf`, filenameHint),
+  // One entry, one PDF — the per-consultation/per-visit view/download
+  // buttons, as opposed to the combined every-entry document above.
+  viewPrescriptionPdf: (entryId: string) => viewPdf(`/prescriptions/${entryId}/pdf`),
+  savePrescriptionPdf: (entryId: string, filenameHint?: string) => savePdf(`/prescriptions/${entryId}/pdf`, filenameHint),
 }

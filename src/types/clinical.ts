@@ -20,6 +20,8 @@ export interface Staff {
   name: string
   role: StaffRole
   specialty: string | null
+  // Shown on the prescription PDF letterhead alongside name/specialty.
+  registrationNo: string | null
   email: string
 }
 

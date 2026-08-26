@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react'
-import { ChevronDown, Plus, X } from 'lucide-react'
+import { ChevronDown, Download, Eye, Pill, Plus, X } from 'lucide-react'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
 import { formatDate, formatDateTime } from '../../../lib/date'
+import { formatRx } from '../../../lib/rx'
 import { Button } from '../../../components/Button'
 import { Field, SelectField, TextareaField } from '../../../components/Field'
-import { CONSULTATION_FEE, RX_FREQUENCIES, type Consultation, type RxItem, type Service, type Treatment } from '../../../types/clinical'
+import {
+  CONSULTATION_FEE,
+  RX_FREQUENCIES,
+  type Consultation,
+  type PrescriptionEntry,
+  type RxItem,
+  type Service,
+  type Treatment,
+} from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 
 const UNCATEGORIZED = 'General'
@@ -236,6 +245,147 @@ export function RxRowsField({ value, onChange }: { value: RxItem[]; onChange: (i
   )
 }
 
+/** View/Download buttons for an existing prescription. The prescription
+ * itself is written directly by the form that creates it (the consultation
+ * form's diagnosis/rx/advice/next-visit fields, or the visit-logging form's
+ * equivalent) — this component only ever displays one, never creates one,
+ * so it renders nothing when there isn't one yet. Each prescription is its
+ * own PDF — see clinicalApi.viewPrescriptionPdf. */
+/** Small icon-only View/Download, no label — for a tight list row (one per
+ * visit). The consultation card's own prescription badge (PrescriptionBadge,
+ * above) is the labeled, bordered-group version. */
+export function PrescriptionBlock({ prescription }: { prescription: PrescriptionEntry | undefined }) {
+  const { viewPrescriptionPdf, savePrescriptionPdf } = useClinic()
+  const [viewing, setViewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!prescription) return null
+  const entry = prescription
+
+  async function handleView() {
+    setViewing(true)
+    setError(null)
+    try {
+      await viewPrescriptionPdf(entry.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open the prescription')
+    } finally {
+      setViewing(false)
+    }
+  }
+
+  async function handleDownload() {
+    setDownloading(true)
+    setError(null)
+    try {
+      await savePrescriptionPdf(entry.id, `prescription-${entry.id.slice(0, 8)}.pdf`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download the prescription')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={handleView}
+        disabled={viewing}
+        aria-label="View prescription"
+        title="View prescription"
+        className="flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep disabled:opacity-50"
+      >
+        <Eye size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={downloading}
+        aria-label="Download prescription"
+        title="Download prescription"
+        className="flex items-center justify-center rounded-[20px] bg-paper-raised p-1.5 text-ink-soft transition-colors hover:bg-accent-tint hover:text-accent-deep disabled:opacity-50"
+      >
+        <Download size={14} />
+      </button>
+      {error && <span className="text-[12px] text-crit">{error}</span>}
+    </div>
+  )
+}
+
+/** Icon + View + Download as one bordered group — reads as a single badge
+ * rather than three separate elements, though View/Download are each their
+ * own clickable segment (divided by an inner border). Shown right on the
+ * consultation card itself once it has a prescription, no need to expand
+ * "View" first. */
+export function PrescriptionBadge({ prescription }: { prescription: PrescriptionEntry | undefined }) {
+  const { viewPrescriptionPdf, savePrescriptionPdf } = useClinic()
+  const [viewing, setViewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!prescription) return null
+  const entry = prescription
+
+  async function handleView() {
+    setViewing(true)
+    setError(null)
+    try {
+      await viewPrescriptionPdf(entry.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open the prescription')
+    } finally {
+      setViewing(false)
+    }
+  }
+
+  async function handleDownload() {
+    setDownloading(true)
+    setError(null)
+    try {
+      await savePrescriptionPdf(entry.id, `prescription-${entry.id.slice(0, 8)}.pdf`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download the prescription')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-accent">
+        <span
+          className="flex items-center justify-center bg-accent-tint px-2 text-accent-deep"
+          aria-hidden="true"
+          title="Prescription"
+        >
+          <Pill size={14} />
+        </span>
+        <button
+          type="button"
+          onClick={handleView}
+          disabled={viewing}
+          aria-label="View prescription"
+          className="border-l border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint disabled:opacity-50"
+        >
+          {viewing ? '…' : 'View'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={downloading}
+          aria-label="Download prescription"
+          className="border-l border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint disabled:opacity-50"
+        >
+          {downloading ? '…' : 'Download'}
+        </button>
+      </div>
+      {error && <span className="text-[11px] text-crit">{error}</span>}
+    </div>
+  )
+}
+
 interface Props {
   patient: Patient
   data: PatientClinicalData
@@ -247,7 +397,7 @@ interface Props {
 }
 
 export function ConsultationsTab({ patient, data, onChange, initialFormOpen = false }: Props) {
-  const { doctors, services, addConsultation } = useClinic()
+  const { doctors, services, addConsultation, addPrescription } = useClinic()
   const [formOpen, setFormOpen] = useState(initialFormOpen)
   const [submitting, setSubmitting] = useState(false)
 
@@ -255,7 +405,10 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
     doctorId: string
     chiefComplaint: string
     oralExamination: string
+    diagnosis: string
     rx: RxItem[]
+    advice: string
+    nextVisit: string
     recommendedServiceIds: string[]
     recommendationNote?: string
   }) {
@@ -264,9 +417,7 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
       // Billing (payment status/mode) isn't decided here — doctors log the
       // clinical record, billing is handled separately on its own track.
       // Every consultation starts unpaid; reception settles it later.
-      // No prescription here — prescriptions are only ever added once
-      // treatment starts, from the Treatments tab.
-      await addConsultation(patient.id, {
+      const created = await addConsultation(patient.id, {
         doctorId: input.doctorId,
         consultDate: today(),
         fee: CONSULTATION_FEE,
@@ -277,6 +428,20 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
         recommendedServiceIds: input.recommendedServiceIds,
         recommendationNote: input.recommendationNote,
       })
+      // The prescription is just the diagnosis/rx/advice/next-visit fields
+      // on this same form — one save, no separate "add prescription" step.
+      // Skipped entirely when no medicine was entered (nothing to prescribe).
+      const notes = formatRx(input.rx)
+      if (notes !== '') {
+        await addPrescription({
+          patientId: patient.id,
+          consultationId: created.id,
+          diagnosis: input.diagnosis || undefined,
+          notes,
+          advice: input.advice || undefined,
+          nextVisit: input.nextVisit || undefined,
+        })
+      }
       setFormOpen(false)
       onChange()
     } finally {
@@ -305,6 +470,7 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
           key={consultation.id}
           consultation={consultation}
           treatment={data.treatments.find((t) => t.consultationId === consultation.id)}
+          prescription={data.prescriptions.find((p) => p.consultationId === consultation.id)}
           onChange={onChange}
         />
       ))}
@@ -324,7 +490,10 @@ function NewConsultationForm({
     doctorId: string
     chiefComplaint: string
     oralExamination: string
+    diagnosis: string
     rx: RxItem[]
+    advice: string
+    nextVisit: string
     recommendedServiceIds: string[]
     recommendationNote?: string
   }) => void
@@ -333,7 +502,10 @@ function NewConsultationForm({
   const [doctorId, setDoctorId] = useState(doctors[0].id)
   const [chiefComplaint, setChiefComplaint] = useState('')
   const [oralExamination, setOralExamination] = useState('')
+  const [diagnosis, setDiagnosis] = useState('')
   const [rx, setRx] = useState<RxItem[]>([])
+  const [advice, setAdvice] = useState('')
+  const [nextVisit, setNextVisit] = useState('')
   const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>([])
   const [recommendationNote, setRecommendationNote] = useState('')
 
@@ -343,7 +515,10 @@ function NewConsultationForm({
       doctorId,
       chiefComplaint,
       oralExamination,
+      diagnosis,
       rx: rx.filter((item) => item.medicine.trim() !== ''),
+      advice,
+      nextVisit,
       recommendedServiceIds,
       recommendationNote: recommendationNote || undefined,
     })
@@ -375,7 +550,13 @@ function NewConsultationForm({
         placeholder=""
       />
 
+      <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+
       <RxRowsField value={rx} onChange={setRx} />
+
+      <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
+
+      <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
 
       <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
 
@@ -398,18 +579,20 @@ function NewConsultationForm({
 function ConsultationCard({
   consultation,
   treatment,
+  prescription,
   onChange,
 }: {
   consultation: Consultation
   treatment: Treatment | undefined
+  prescription: PrescriptionEntry | undefined
   onChange: () => void
 }) {
   const { doctors, services, doctorName } = useClinic()
   const [editOpen, setEditOpen] = useState(false)
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-col gap-0 rounded-xl border border-rule bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <p className="text-subheading font-medium text-ink">{doctorName(consultation.doctorId)}</p>
           <p className="text-[12px] text-ink-faint">{formatDate(consultation.consultDate)}</p>
@@ -426,10 +609,21 @@ function ConsultationCard({
         </button>
       </div>
 
+      {/* Right on the card itself, not hidden behind "View" — the
+          prescription is written as part of the form below (diagnosis/rx/
+          advice/next visit), no separate "add prescription" step, and
+          nothing shows here until it has at least one medicine. */}
+      {prescription && (
+        <div className="flex justify-end">
+          <PrescriptionBadge prescription={prescription} />
+        </div>
+      )}
+
       {editOpen && (
         <>
           <EditConsultationForm
             consultation={consultation}
+            prescription={prescription}
             doctors={doctors}
             services={services}
             onSaved={() => {
@@ -456,23 +650,28 @@ function ConsultationCard({
 
 function EditConsultationForm({
   consultation,
+  prescription,
   doctors,
   services,
   onSaved,
   onCancel,
 }: {
   consultation: Consultation
+  prescription: PrescriptionEntry | undefined
   doctors: { id: string; name: string }[]
   services: Service[]
   onSaved: () => void
   onCancel: () => void
 }) {
-  const { updateConsultation } = useClinic()
+  const { updateConsultation, addPrescription, editPrescription } = useClinic()
   const [doctorId, setDoctorId] = useState(consultation.doctorId)
   const [consultDate, setConsultDate] = useState(consultation.consultDate)
   const [chiefComplaint, setChiefComplaint] = useState(consultation.chiefComplaint)
   const [oralExamination, setOralExamination] = useState(consultation.oralExamination)
+  const [diagnosis, setDiagnosis] = useState(prescription?.diagnosis ?? '')
   const [rx, setRx] = useState<RxItem[]>(consultation.rx)
+  const [advice, setAdvice] = useState(prescription?.advice ?? '')
+  const [nextVisit, setNextVisit] = useState(prescription?.nextVisit ?? '')
   const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>(consultation.recommendedServiceIds)
   const [recommendationNote, setRecommendationNote] = useState(consultation.recommendationNote ?? '')
   const [submitting, setSubmitting] = useState(false)
@@ -483,6 +682,7 @@ function EditConsultationForm({
     setSubmitting(true)
     setError(null)
     try {
+      const filteredRx = rx.filter((item) => item.medicine.trim() !== '')
       // Billing fields aren't editable here — carried forward unchanged.
       // Payment status/mode live on a separate billing track now.
       await updateConsultation(consultation.patientId, consultation.id, {
@@ -491,12 +691,35 @@ function EditConsultationForm({
         fee: consultation.fee,
         chiefComplaint,
         oralExamination,
-        rx: rx.filter((item) => item.medicine.trim() !== ''),
+        rx: filteredRx,
         paymentStatus: consultation.paymentStatus,
         paymentMode: consultation.paymentMode,
         recommendedServiceIds,
         recommendationNote: recommendationNote || undefined,
       })
+
+      // The prescription is just these same diagnosis/rx/advice/next-visit
+      // fields, kept in sync with this one form — no separate prescription
+      // step. Update the existing entry if there is one; otherwise create
+      // one now if medicine was just added; do nothing if there's still none.
+      const notes = formatRx(filteredRx)
+      if (prescription) {
+        await editPrescription(prescription.id, {
+          diagnosis: diagnosis || undefined,
+          notes,
+          advice: advice || undefined,
+          nextVisit: nextVisit || undefined,
+        })
+      } else if (notes !== '') {
+        await addPrescription({
+          patientId: consultation.patientId,
+          consultationId: consultation.id,
+          diagnosis: diagnosis || undefined,
+          notes,
+          advice: advice || undefined,
+          nextVisit: nextVisit || undefined,
+        })
+      }
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes')
@@ -530,7 +753,13 @@ function EditConsultationForm({
 
       <TextareaField label="Oral examination" required value={oralExamination} onChange={(e) => setOralExamination(e.target.value)} />
 
+      <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+
       <RxRowsField value={rx} onChange={setRx} />
+
+      <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
+
+      <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
 
       <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
 

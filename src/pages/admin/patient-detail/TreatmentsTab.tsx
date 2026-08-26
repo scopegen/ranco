@@ -6,20 +6,10 @@ import { Field, SelectField } from '../../../components/Field'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatDate } from '../../../lib/date'
-import type { Consultation, RxItem, Treatment, Visit } from '../../../types/clinical'
+import { formatRx } from '../../../lib/rx'
+import type { Consultation, PrescriptionEntry, RxItem, Treatment, Visit } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
-import { CategorizedServicePicker, RxRowsField } from './ConsultationsTab'
-
-/** RxItem rows -> the plain-text, one-medicine-per-line format the backend's
- * PrescriptionEntry.notes (and its PDF rendering) already expects — no
- * backend change needed to get the same structured Rx input used on the
- * consultation form here too. */
-function formatRx(rx: RxItem[]): string {
-  return rx
-    .filter((item) => item.medicine.trim() !== '')
-    .map((item) => `${item.medicine.trim()} — ${item.frequency}`)
-    .join('\n')
-}
+import { CategorizedServicePicker, PrescriptionBlock, RxRowsField } from './ConsultationsTab'
 
 interface Props {
   patient: Patient
@@ -76,6 +66,7 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
         patient={patient}
         treatment={treatment}
         visits={data.visitsByTreatment[treatment.id] ?? []}
+        prescriptions={data.prescriptions}
         onChange={onChange}
       />
     )
@@ -228,11 +219,13 @@ function TreatmentCard({
   patient,
   treatment,
   visits,
+  prescriptions,
   onChange,
 }: {
   patient: Patient
   treatment: Treatment
   visits: Visit[]
+  prescriptions: PrescriptionEntry[]
   onChange: () => void
 }) {
   const { doctorName, serviceName, logVisit, addPrescription, endTreatment, deleteTreatment } = useClinic()
@@ -336,8 +329,9 @@ function TreatmentCard({
               payment status. The treatment as a whole is billed once, on
               the Billing tab. */}
           {visits.map((visit) => (
-            <div key={visit.id} className="text-[13px] text-ink-soft">
-              {formatDate(visit.visitDate)}
+            <div key={visit.id} className="flex items-center justify-between gap-2">
+              <span className="text-[13px] text-ink-soft">{formatDate(visit.visitDate)}</span>
+              <PrescriptionBlock prescription={prescriptions.find((p) => p.visitId === visit.id)} />
             </div>
           ))}
         </div>

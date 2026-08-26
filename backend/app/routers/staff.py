@@ -26,6 +26,7 @@ def create_staff(payload: StaffCreate, db: Session = Depends(get_db), _admin: St
         name=payload.name,
         role=payload.role,
         specialty=payload.specialty,
+        registration_no=payload.registration_no,
         email=payload.email,
         hashed_password=hash_password(payload.password),
     )

@@ -13,6 +13,7 @@ class StaffCreate(BaseModel):
     name: str
     role: StaffRole
     specialty: str | None = None
+    registration_no: str | None = None
     email: EmailStr
     password: str
 
@@ -23,6 +24,7 @@ class StaffOut(BaseModel):
     name: str
     role: StaffRole
     specialty: str | None
+    registration_no: str | None
     email: EmailStr
 
 

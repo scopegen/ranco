@@ -73,6 +73,9 @@ class Staff(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[StaffRole] = mapped_column(Enum(StaffRole, name="staff_role"), nullable=False)
     specialty: Mapped[str | None] = mapped_column(String(120))
+    # Shown on the prescription PDF letterhead alongside name/specialty —
+    # e.g. "Reg. No. A-17490". Null just omits that line (no fallback text).
+    registration_no: Mapped[str | None] = mapped_column(String(60))
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 

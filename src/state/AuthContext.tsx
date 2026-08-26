@@ -8,6 +8,7 @@ interface RawStaff {
   name: string
   role: StaffRole
   specialty: string | null
+  registration_no: string | null
   email: string
 }
 
@@ -17,7 +18,14 @@ interface LoginResponse {
 }
 
 function toStaff(r: RawStaff): Staff {
-  return { id: r.id, name: r.name, role: r.role, specialty: r.specialty, email: r.email }
+  return {
+    id: r.id,
+    name: r.name,
+    role: r.role,
+    specialty: r.specialty,
+    registrationNo: r.registration_no,
+    email: r.email,
+  }
 }
 
 interface AuthContextValue {

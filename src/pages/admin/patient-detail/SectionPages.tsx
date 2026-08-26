@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router-dom'
-import { ArrowLeft, Download, Eye } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { PatientDetailContext } from '../PatientDetail'
 import { TimelineTab } from './TimelineTab'
 import { ConsultationsTab } from './ConsultationsTab'
@@ -58,40 +58,13 @@ export function ConsultationsSection() {
 }
 
 export function TreatmentsSection() {
-  const { patient, data, refresh, busy, handleViewPrescriptions, handleSavePrescriptions } =
-    useOutletContext<PatientDetailContext>()
-  const prescriptionsBusy = busy === 'view-prescriptions' || busy === 'save-prescriptions'
+  const { patient, data, refresh } = useOutletContext<PatientDetailContext>()
 
   return (
     <SectionShell title="Treatments">
-      {/* Prescription actions live only here — a prescription only ever gets
-          written once treatment has started. */}
-      <div className="mb-4 flex items-center justify-between gap-2 rounded-lg bg-paper-raised px-3.5 py-2.5">
-        <span className="text-body font-medium text-ink">{prescriptionsBusy ? 'Generating…' : 'Prescription'}</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={handleViewPrescriptions}
-            disabled={busy !== null}
-            aria-label="View prescriptions"
-            title="View"
-            className="flex items-center justify-center rounded-full p-2 text-ink-soft transition-colors hover:bg-white hover:text-accent-deep disabled:opacity-50"
-          >
-            <Eye size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={handleSavePrescriptions}
-            disabled={busy !== null}
-            aria-label="Download prescriptions"
-            title="Download"
-            className="flex items-center justify-center rounded-full p-2 text-ink-soft transition-colors hover:bg-white hover:text-accent-deep disabled:opacity-50"
-          >
-            <Download size={18} />
-          </button>
-        </div>
-      </div>
-
+      {/* Prescriptions now live per-visit (view/download buttons next to
+          each visit) rather than as one combined document here — each
+          visit's prescription is its own separate PDF. */}
       <TreatmentsTab patient={patient} data={data} onChange={refresh} />
     </SectionShell>
   )

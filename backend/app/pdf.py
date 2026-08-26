@@ -30,20 +30,23 @@ def _asset_uri(filename: str) -> str:
 
 # Clinic letterhead — matches the printed Ranco Dental Clinic letterhead
 # exactly (logo + tagline on the left, practising doctor's details on the
-# right, teal rule, contact bar in the footer). The letterhead always shows
-# the clinic's registered doctor, regardless of which doctor actually logged
-# a given consultation/treatment/prescription — that per-entry doctor is
-# still shown inline in the body text.
+# right, teal rule, contact bar in the footer). Fallback/default doctor
+# shown on invoice/history PDFs (which can span more than one doctor);
+# prescription PDFs override this with the actual prescribing doctor — see
+# _page_template_html's doctor_name/doctor_specialty/doctor_reg_no params.
 CLINIC_NAME = "RANCO DENTAL"
 CLINIC_TAGLINE = "Your Smile, Lifestyle"
 CLINIC_ADDRESS = "Sector 141 Noida"
 CLINIC_PHONE = "+91 93105 70154"
 CLINIC_EMAIL = "noida@rancodental.com"
 CLINIC_WEBSITE = "www.rancodental.com"
-DOCTOR_QUALIFICATION = "BDS, MDS"
 LETTERHEAD_DOCTOR_NAME = "Neha Baliyan"
 LETTERHEAD_DOCTOR_SPECIALTY = "Dental Surgeon, Implantologist"
-LETTERHEAD_DOCTOR_REG_NO = "Reg. No. A-17490"
+LETTERHEAD_DOCTOR_REG_NO = "A-17490"
+PRESCRIPTION_DISCLAIMER = (
+    "This document is valid only with the doctor's signature and clinic stamp. "
+    "Please follow dosage instructions carefully."
+)
 
 ACCENT = "#1e5f8c"
 ACCENT_DEEP = "#123f5c"
@@ -69,11 +72,11 @@ BASE_CSS = f"""
     top: 0.9cm; left: 1.8cm; width: 17.4cm; height: 3cm;
   }}
   @frame content_frame {{
-    top: 4.2cm; left: 1.8cm; width: 17.4cm; height: 22.9cm;
+    top: 4.2cm; left: 1.8cm; width: 17.4cm; height: 22.4cm;
   }}
   @frame footer_frame {{
     -pdf-frame-content: footer_content;
-    top: 27.3cm; left: 1.8cm; width: 17.4cm; height: 1.8cm;
+    top: 26.8cm; left: 1.8cm; width: 17.4cm; height: 2.5cm;
   }}
 }}
 body {{ font-family: "Roboto", Helvetica, Arial, sans-serif; font-size: 10pt; color: {INK}; }}
@@ -85,6 +88,7 @@ body {{ font-family: "Roboto", Helvetica, Arial, sans-serif; font-size: 10pt; co
 #header_content .doctor-specialty {{ font-size: 9pt; color: {INK_SOFT}; margin: 2px 0 0; }}
 #header_content .doctor-reg {{ font-size: 8.5pt; font-weight: bold; color: {INK}; margin: 2px 0 0; }}
 #header_content .letterhead-rule {{ border-bottom: 2px solid {LETTERHEAD_BLUE}; margin: 8px 0 0; }}
+#footer_content .footer-note {{ font-size: 8pt; color: {INK_SOFT}; font-style: italic; text-align: center; margin: 0 0 6px; }}
 #footer_content .contact-footer-rule {{ border-bottom: 2px solid {LETTERHEAD_BLUE}; margin: 0 0 8px; }}
 #footer_content table {{ width: 100%; }}
 #footer_content td {{ font-size: 8.5pt; color: {INK_SOFT}; text-align: center; vertical-align: middle; padding: 0 4px; }}
@@ -92,9 +96,26 @@ body {{ font-family: "Roboto", Helvetica, Arial, sans-serif; font-size: 10pt; co
 #footer_content img {{ vertical-align: middle; margin-right: 5px; }}
 .doc-title {{ font-size: 14pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 12px; }}
 .disclaimer {{ font-size: 8pt; color: {INK_SOFT}; padding-top: 6px; margin-top: 24px; font-style: italic; text-align: center; }}
+hr.section-divider {{ border: none; border-top: 1px solid {RULE}; margin: 6px 0 12px; height: 0; }}
 table.info {{ width: 100%; margin-bottom: 12px; }}
 table.info td {{ padding: 2px 0; font-size: 9.5pt; vertical-align: top; }}
 .label {{ font-weight: bold; color: {INK_SOFT}; }}
+/* One field per row, label/colon/value each their own column — the label
+   column is a fixed width so the colons line up regardless of how long
+   each label is ("Patient" vs "Patient ID" vs "Gender" ...). */
+table.field-table {{ width: 100%; margin-bottom: 12px; border-collapse: collapse; }}
+table.field-table td {{ padding: 3px 0; font-size: 9.5pt; vertical-align: top; }}
+table.field-table .field-label {{ width: 85pt; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
+table.field-table .field-colon {{ width: 10pt; color: {INK_SOFT}; }}
+table.field-table .field-value {{ color: {INK}; }}
+/* Same idea, two fields per row (patient info) — six columns: label/colon/
+   value, twice, each pair sized so both sides' colons line up in their own
+   column, independent of the other side's label lengths. */
+table.field-table-2col {{ width: 100%; margin-bottom: 12px; border-collapse: collapse; }}
+table.field-table-2col td {{ padding: 3px 0; font-size: 9.5pt; vertical-align: top; }}
+table.field-table-2col .field-label {{ width: 20%; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
+table.field-table-2col .field-colon {{ width: 3%; color: {INK_SOFT}; }}
+table.field-table-2col .field-value {{ width: 27%; color: {INK}; }}
 .entry {{ margin-bottom: 16px; padding: 10px 0 14px; border-bottom: 1px solid {RULE}; }}
 .entry-page {{ margin-top: 6px; }}
 .rx-date {{ font-size: 12pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 10px; }}
@@ -134,7 +155,27 @@ def patient_id_str(patient_number: int) -> str:
 # @page frame rules above (matched by id) and stamped onto every page —
 # this is the repeating letterhead template. doc_title stays in the
 # regular content flow (shown once, where the content actually starts).
-def _page_template_html() -> str:
+#
+# doctor_name/doctor_specialty/doctor_reg_no: override the static clinic
+# letterhead with a specific doctor's own details — used by the prescription
+# PDFs (one doctor per document) so the header shows whoever actually wrote
+# it rather than always the same hardcoded name. Left unset, every other
+# document (invoice, history) keeps the static clinic-letterhead doctor.
+# footer_note: an extra line stamped above the contact-info bar on every
+# page — e.g. the prescription's "valid only with signature/stamp" notice.
+# Left unset, the footer is just the contact bar (invoice/history for now).
+def _page_template_html(
+    doctor_name: str | None = None,
+    doctor_specialty: str | None = None,
+    doctor_reg_no: str | None = None,
+    footer_note: str | None = None,
+) -> str:
+    name = _display_doctor_name(doctor_name) if doctor_name else LETTERHEAD_DOCTOR_NAME
+    specialty = doctor_specialty if doctor_name else LETTERHEAD_DOCTOR_SPECIALTY
+    reg_no = doctor_reg_no if doctor_name else LETTERHEAD_DOCTOR_REG_NO
+    specialty_html = f'<p class="doctor-specialty">{_esc(specialty)}</p>' if specialty else ""
+    reg_no_html = f'<p class="doctor-reg">Reg. No. {_esc(reg_no)}</p>' if reg_no else ""
+    footer_note_html = f'<p class="footer-note">{_esc(footer_note)}</p>' if footer_note else ""
     return f"""
     <div id="header_content">
       <table>
@@ -144,15 +185,16 @@ def _page_template_html() -> str:
             <p class="brand-tagline">{CLINIC_TAGLINE}</p>
           </td>
           <td class="doctor-cell" width="45%">
-            <p class="doctor-name">Dr. {LETTERHEAD_DOCTOR_NAME}</p>
-            <p class="doctor-specialty">{LETTERHEAD_DOCTOR_SPECIALTY}</p>
-            <p class="doctor-reg">{LETTERHEAD_DOCTOR_REG_NO}</p>
+            <p class="doctor-name">Dr. {_esc(name)}</p>
+            {specialty_html}
+            {reg_no_html}
           </td>
         </tr>
       </table>
       <div class="letterhead-rule"></div>
     </div>
     <div id="footer_content">
+      {footer_note_html}
       <div class="contact-footer-rule"></div>
       <table>
         <tr>
@@ -188,6 +230,41 @@ def _patient_info_html(patient) -> str:
     """
 
 
+def _field_row(label: str, value: str) -> str:
+    """One label:value line, single column — a fixed-width label column so
+    the colon lines up regardless of label length. `value` is inserted as-is
+    (callers _esc it)."""
+    return f'<tr><td class="field-label">{_esc(label)}</td><td class="field-colon">:</td><td class="field-value">{value}</td></tr>'
+
+
+def _field_row_pair(label1: str, value1: str, label2: str, value2: str) -> str:
+    """One row, two label:value fields side by side — each side's colon
+    lines up in its own column independent of the other side's label
+    lengths. `value1`/`value2` are inserted as-is (callers _esc them)."""
+    return (
+        f'<tr><td class="field-label">{_esc(label1)}</td><td class="field-colon">:</td><td class="field-value">{value1}</td>'
+        f'<td class="field-label">{_esc(label2)}</td><td class="field-colon">:</td><td class="field-value">{value2}</td></tr>'
+    )
+
+
+def _prescription_patient_info_html(patient) -> str:
+    """Two fields per row, three rows — Patient/Patient ID, Age/Gender,
+    Phone/Address. The shared _patient_info_html's "Age / Sex" label never
+    actually printed a sex/gender value; this fixes that too. Scoped to
+    prescription PDFs only for now; the invoice/history layout is being
+    redone separately."""
+    gender = _esc(patient.gender.value.capitalize()) if patient.gender else "—"
+    address = _esc(", ".join(p for p in [patient.sector, patient.city] if p))
+    rows = "".join(
+        [
+            _field_row_pair("Patient", _esc(patient.name), "Patient ID", patient_id_str(patient.patient_number)),
+            _field_row_pair("Age", f"{_age(patient.dob, patient.birth_year)} yrs", "Gender", gender),
+            _field_row_pair("Phone", _esc(patient.phone), "Address", address),
+        ]
+    )
+    return f'<table class="field-table-2col">{rows}</table>'
+
+
 def _display_doctor_name(name: str) -> str:
     """Staff names may already include a "Dr." prefix (as seeded) — don't double it up."""
     stripped = name.strip()
@@ -199,17 +276,28 @@ def _display_doctor_name(name: str) -> str:
 
 
 def _prescription_entry_html(
-    entry, doctor_name: str, doctor_specialty: str | None, page_mode: bool = False
+    entry,
+    doctor_name: str,
+    doctor_specialty: str | None,
+    page_mode: bool = False,
+    chief_complaint: str | None = None,
 ) -> str:
-    """page_mode: used only by render_prescription_pdf, where each entry is
-    its own standalone page — adds a prominent date + day-of-week field up
-    top and drops the list-style bottom border (there's no next entry
-    directly below it to separate from). render_history_pdf still gets the
-    original compact, bordered, list-style rendering."""
+    """page_mode: used only by the per-entry prescription PDFs (single and
+    combined), where each entry is its own standalone page with its own
+    letterhead already crediting the doctor — so, unlike render_history_pdf's
+    compact list-style rendering (page_mode=False), no date or doctor line
+    is repeated in the body here; the date/day block is rendered separately,
+    above the patient info, by the caller.
+    chief_complaint: only set when this entry is linked to a consultation —
+    consultations already capture it, so it's passed in from there rather
+    than duplicated onto PrescriptionEntry itself."""
     rx_lines = "".join(
         f'<div class="rx-line">{i + 1}. {_esc(line)}</div>'
         for i, line in enumerate(entry.notes.splitlines())
         if line.strip()
+    )
+    complaint_html = (
+        f'<p><span class="label">Chief Complaint:</span> {_esc(chief_complaint)}</p>' if chief_complaint else ""
     )
     diagnosis_html = f'<p><span class="label">Diagnosis:</span> {_esc(entry.diagnosis)}</p>' if entry.diagnosis else ""
     advice_html = f'<p><span class="label">Advice:</span> {_esc(entry.advice)}</p>' if entry.advice else ""
@@ -219,21 +307,20 @@ def _prescription_entry_html(
     specialty_str = f" &middot; {_esc(doctor_specialty)}" if doctor_specialty else ""
 
     if page_mode:
-        date_field_html = f'<p class="rx-date">{entry.created_at.strftime("%d %b %Y")} &middot; {entry.created_at.strftime("%A")}</p>'
-        doctor_line = f'<b>Dr. {_esc(_display_doctor_name(doctor_name))}</b>{specialty_str} &middot; {DOCTOR_QUALIFICATION}'
+        entry_head_html = ""
         wrapper_class = "entry-page"
     else:
-        date_field_html = ""
         doctor_line = (
-            f'<b>Dr. {_esc(_display_doctor_name(doctor_name))}</b>{specialty_str} &middot; {DOCTOR_QUALIFICATION}'
+            f'<b>Dr. {_esc(_display_doctor_name(doctor_name))}</b>{specialty_str}'
             f' &mdash; <b>{entry.created_at.strftime("%d %b %Y")}</b>'
         )
+        entry_head_html = f'<div class="entry-head">{doctor_line}</div>'
         wrapper_class = "entry"
 
     return f"""
     <div class="{wrapper_class}">
-      {date_field_html}
-      <div class="entry-head">{doctor_line}</div>
+      {entry_head_html}
+      {complaint_html}
       {diagnosis_html}
       <p class="rx-title"><i>Rx</i></p>
       {rx_lines or '<div class="rx-line">&mdash;</div>'}
@@ -243,10 +330,16 @@ def _prescription_entry_html(
     """
 
 
-def render_prescription_pdf(patient, entries: list, staff_by_id: dict) -> bytes:
+def render_prescription_pdf(
+    patient, entries: list, staff_by_id: dict, chief_complaint_by_entry_id: dict | None = None
+) -> bytes:
     """entries: PrescriptionEntry rows for this patient, any order — sorted
     newest first here. Each entry gets its own page (its own dated
-    prescription slip), not a rolled-up "history" list."""
+    prescription slip), not a rolled-up "history" list. Covers entries from
+    however many different doctors, so — unlike render_single_prescription_pdf
+    — the letterhead stays the static clinic default rather than any one
+    doctor's own details."""
+    chief_complaint_by_entry_id = chief_complaint_by_entry_id or {}
     sorted_entries = sorted(entries, key=lambda e: e.created_at, reverse=True)
 
     pages = []
@@ -256,20 +349,66 @@ def render_prescription_pdf(patient, entries: list, staff_by_id: dict) -> bytes:
             staff_by_id[e.added_by].name if e.added_by in staff_by_id else "Unknown",
             staff_by_id[e.added_by].specialty if e.added_by in staff_by_id else None,
             page_mode=True,
+            chief_complaint=chief_complaint_by_entry_id.get(e.id),
         )
+        # No single per-page date/day fits in the header here (unlike
+        # render_single_prescription_pdf) — the header/footer are one fixed
+        # frame shared by every page, and this document covers several
+        # entries/dates at once. Kept inline instead, same field-table style.
+        date_block = f'<table class="field-table">{_field_row("Date", e.created_at.strftime("%d %b %Y"))}{_field_row("Day", e.created_at.strftime("%A"))}</table>'
         break_style = ' style="page-break-before: always;"' if i > 0 else ""
-        pages.append(f"<div{break_style}>{_patient_info_html(patient)}{entry_html}</div>")
+        divider = '<hr class="section-divider" />'
+        pages.append(
+            f"<div{break_style}>{date_block}{divider}{_prescription_patient_info_html(patient)}"
+            f"{divider}{entry_html}</div>"
+        )
 
     body = "".join(pages)
     if not body:
-        body = _patient_info_html(patient) + '<p style="color:#8894a3;">No prescriptions recorded yet.</p>'
+        body = _prescription_patient_info_html(patient) + '<p style="color:#8894a3;">No prescriptions recorded yet.</p>'
 
     html = f"""
     <html><head><style>{BASE_CSS}</style></head>
     <body>
-      {_page_template_html()}
+      {_page_template_html(footer_note=PRESCRIPTION_DISCLAIMER)}
       {body}
-      <p class="disclaimer">This document is valid only with the doctor's signature and clinic stamp. Please follow dosage instructions carefully.</p>
+    </body></html>
+    """
+    return _to_pdf(html)
+
+
+def render_single_prescription_pdf(
+    patient,
+    entry,
+    doctor_name: str,
+    doctor_specialty: str | None,
+    doctor_reg_no: str | None = None,
+    chief_complaint: str | None = None,
+) -> bytes:
+    """One prescription entry, one PDF — the per-consultation/per-visit
+    "view"/"download" buttons each hit this instead of the combined,
+    every-entry-ever document render_prescription_pdf produces. One doctor
+    per document here, so the letterhead shows that actual doctor (name,
+    specialty, registration no.) instead of the static clinic default —
+    which also means the doctor's name doesn't need repeating in the body."""
+    entry_html = _prescription_entry_html(
+        entry, doctor_name, doctor_specialty, page_mode=True, chief_complaint=chief_complaint
+    )
+    date_block = (
+        f'<table class="field-table">'
+        f'{_field_row("Date", entry.created_at.strftime("%d %b %Y"))}'
+        f'{_field_row("Day", entry.created_at.strftime("%A"))}'
+        f"</table>"
+    )
+    html = f"""
+    <html><head><style>{BASE_CSS}</style></head>
+    <body>
+      {_page_template_html(doctor_name, doctor_specialty, doctor_reg_no, PRESCRIPTION_DISCLAIMER)}
+      {date_block}
+      <hr class="section-divider" />
+      {_prescription_patient_info_html(patient)}
+      <hr class="section-divider" />
+      {entry_html}
     </body></html>
     """
     return _to_pdf(html)
