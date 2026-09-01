@@ -49,6 +49,13 @@ export function QuickAddMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
+  // The add-patient form has its own "Add Patient" submit button right
+  // there — this menu's quick actions (Add consultation/payment, and its
+  // own "Add patient" link) are redundant on this exact page, and its
+  // reserved pop-up space sits right over the bottom of that form. Simplest
+  // fix: don't render it here at all rather than repositioning around it.
+  if (pathname === '/admin/patients/new') return null
+
   function goToSection(patient: Patient, section: Section) {
     const code = formatPatientId(patient.patientNumber)
     setPickerMode(null)
