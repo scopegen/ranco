@@ -10,8 +10,6 @@ from datetime import date, datetime
 from html import escape as _esc
 from pathlib import Path
 
-from xhtml2pdf import pisa
-
 FONTS_DIR = Path(__file__).parent / "fonts"
 ASSETS_DIR = Path(__file__).parent / "assets"
 
@@ -669,6 +667,14 @@ def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
 
 
 def _to_pdf(html: str) -> bytes:
+    # Imported here, not at module load, so a cold Lambda start only pays
+    # xhtml2pdf's import cost (which drags in reportlab, pyHanko →
+    # cryptography, Pillow, lxml — a genuinely heavy chain) on the first
+    # request that actually generates a PDF, not on every cold start
+    # regardless of which endpoint was hit (this module is imported
+    # unconditionally by documents.py, which main.py loads at startup).
+    from xhtml2pdf import pisa
+
     buf = io.BytesIO()
     result = pisa.CreatePDF(html, dest=buf)
     if result.err:

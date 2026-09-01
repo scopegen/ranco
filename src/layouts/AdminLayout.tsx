@@ -96,7 +96,7 @@ export function AdminLayout() {
             offset logic): on patient-detail pages the FAB sits close to the
             bottom edge since the mobile tab bar is hidden there; everywhere
             else it sits higher, above that tab bar. */}
-        <main className={`flex-1 md:pb-28 ${hideMobileNav ? 'pb-24' : 'pb-40'}`}>
+        <main className={`flex-1 md:pb-28 ${hideMobileNav ? 'pb-50' : 'pb-70'}`}>
           <Outlet />
         </main>
       </div>

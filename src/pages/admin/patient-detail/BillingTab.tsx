@@ -981,7 +981,7 @@ function DiscountForm({
 function SummaryTile({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="rounded-xl border border-rule bg-white p-4 shadow-sm">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">{label}</p>
+      <p className="text-[9px] font-medium uppercase tracking-wider text-ink-faint">{label}</p>
       <p className={`mt-1 text-heading font-bold ${accent ? 'text-accent-deep' : 'text-ink'}`}>{value}</p>
     </div>
   )
