@@ -121,6 +121,17 @@ table.field-table-2col td {{ padding: 3px 0; font-size: 9.5pt; vertical-align: t
 table.field-table-2col .field-label {{ width: 20%; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
 table.field-table-2col .field-colon {{ width: 3%; color: {INK_SOFT}; }}
 table.field-table-2col .field-value {{ width: 27%; color: {INK}; }}
+/* The prescription's Date/Day stamp — small and right-aligned (via the
+   align="right" attribute on the <table> itself; xhtml2pdf has no float/
+   flex, so that's its supported way to place a block off to one side).
+   width: auto keeps it just wide enough for its own content instead of
+   stretching full-width like field-table, and the row padding is tighter
+   since it's only two short rows, not a real content section. */
+table.date-block {{ width: auto; border-collapse: collapse; margin-bottom: 12px; }}
+table.date-block td {{ padding: 0 0 1px; font-size: 8pt; vertical-align: top; }}
+table.date-block .field-label {{ width: 30pt; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
+table.date-block .field-colon {{ width: 8pt; color: {INK_SOFT}; }}
+table.date-block .field-value {{ color: {INK}; white-space: nowrap; }}
 .entry {{ margin-bottom: 16px; padding: 10px 0 14px; border-bottom: 1px solid {RULE}; }}
 .entry-page {{ margin-top: 6px; }}
 .rx-date {{ font-size: 12pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 10px; }}
@@ -343,6 +354,7 @@ def _prescription_entry_html(
     doctor_specialty: str | None,
     page_mode: bool = False,
     chief_complaint: str | None = None,
+    oral_examination: str | None = None,
 ) -> str:
     """page_mode: used only by the per-entry prescription PDFs (single and
     combined), where each entry is its own standalone page with its own
@@ -350,9 +362,9 @@ def _prescription_entry_html(
     compact list-style rendering (page_mode=False), no date or doctor line
     is repeated in the body here; the date/day block is rendered separately,
     above the patient info, by the caller.
-    chief_complaint: only set when this entry is linked to a consultation —
-    consultations already capture it, so it's passed in from there rather
-    than duplicated onto PrescriptionEntry itself."""
+    chief_complaint/oral_examination: only set when this entry is linked to a
+    consultation — consultations already capture both, so they're passed in
+    from there rather than duplicated onto PrescriptionEntry itself."""
     rx_lines = "".join(
         f'<div class="rx-line">{i + 1}. {_esc(line)}</div>'
         for i, line in enumerate(entry.notes.splitlines())
@@ -360,6 +372,9 @@ def _prescription_entry_html(
     )
     complaint_html = (
         f'<p><span class="label">Chief Complaint:</span> {_esc(chief_complaint)}</p>' if chief_complaint else ""
+    )
+    oral_examination_html = (
+        f'<p><span class="label">Oral Examination:</span> {_esc(oral_examination)}</p>' if oral_examination else ""
     )
     diagnosis_html = f'<p><span class="label">Diagnosis:</span> {_esc(entry.diagnosis)}</p>' if entry.diagnosis else ""
     advice_html = f'<p><span class="label">Advice:</span> {_esc(entry.advice)}</p>' if entry.advice else ""
@@ -383,6 +398,7 @@ def _prescription_entry_html(
     <div class="{wrapper_class}">
       {entry_head_html}
       {complaint_html}
+      {oral_examination_html}
       {diagnosis_html}
       <p class="rx-title"><i>Rx</i></p>
       {rx_lines or '<div class="rx-line">&mdash;</div>'}
@@ -446,6 +462,7 @@ def render_single_prescription_pdf(
     doctor_specialty: str | None,
     doctor_reg_no: str | None = None,
     chief_complaint: str | None = None,
+    oral_examination: str | None = None,
 ) -> bytes:
     """One prescription entry, one PDF — the per-consultation/per-visit
     "view"/"download" buttons each hit this instead of the combined,
@@ -454,10 +471,19 @@ def render_single_prescription_pdf(
     specialty, registration no.) instead of the static clinic default —
     which also means the doctor's name doesn't need repeating in the body."""
     entry_html = _prescription_entry_html(
-        entry, doctor_name, doctor_specialty, page_mode=True, chief_complaint=chief_complaint
+        entry,
+        doctor_name,
+        doctor_specialty,
+        page_mode=True,
+        chief_complaint=chief_complaint,
+        oral_examination=oral_examination,
     )
+    # Right-aligned (align="right" — xhtml2pdf has no float/flex, this is
+    # its documented way to place a block off to one side) and smaller/
+    # tighter than the shared field-table style, since it's just a quick
+    # Date/Day stamp rather than a real content section.
     date_block = (
-        f'<table class="field-table">'
+        f'<table class="date-block" align="right">'
         f'{_field_row("Date", entry.created_at.strftime("%d %b %Y"))}'
         f'{_field_row("Day", entry.created_at.strftime("%A"))}'
         f"</table>"

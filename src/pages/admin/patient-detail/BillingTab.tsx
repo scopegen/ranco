@@ -282,7 +282,10 @@ export function BillingHistoryModal({ patientId, onClose }: { patientId: string;
     let cancelled = false
     getBillingHistory(patientId)
       .then((res) => {
-        if (!cancelled) setEvents(res)
+        // Newest first, most recent payment/bill/invoice on top — the
+        // backend already returns it sorted this way, but re-sorting here
+        // too keeps that guaranteed regardless of API order.
+        if (!cancelled) setEvents([...res].sort((a, b) => b.date.localeCompare(a.date)))
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load billing history')
@@ -291,14 +294,6 @@ export function BillingHistoryModal({ patientId, onClose }: { patientId: string;
       cancelled = true
     }
   }, [patientId, getBillingHistory])
-
-  const kindLabel: Record<BillingHistoryEvent['kind'], string> = {
-    consultation_billed: 'Consultation billed',
-    consultation_paid: 'Consultation paid',
-    treatment_billed: 'Treatment billed',
-    payment: 'Payment received',
-    invoice: 'Invoice generated',
-  }
 
   return (
     <div className="fixed inset-0 z-30 flex items-start justify-center bg-ink/40 px-4 pt-20 sm:pt-28" onClick={onClose}>
@@ -332,12 +327,7 @@ export function BillingHistoryModal({ patientId, onClose }: { patientId: string;
               >
                 <div className="flex flex-col gap-0.5">
                   <span className="text-body font-medium text-ink">{event.label}</span>
-                  <span className="text-[12px] text-ink-faint">
-                    {formatDateTime(event.date)}
-                    {event.mode && ` · ${event.mode.toUpperCase()}`}
-                    {' · '}
-                    {kindLabel[event.kind]}
-                  </span>
+                  <span className="text-[12px] text-ink-faint">{formatDate(event.date)}</span>
                 </div>
                 <span
                   className={`font-medium ${event.kind === 'payment' ? 'text-accent-deep' : 'text-ink'}`}

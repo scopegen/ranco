@@ -79,13 +79,16 @@ def download_prescription_entry_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
     doctor = db.get(Staff, _prescribing_doctor_id(db, entry))
-    # Consultations already capture the chief complaint — pull it in here
-    # rather than duplicating the field onto PrescriptionEntry itself.
+    # Consultations already capture chief complaint and oral examination —
+    # pull them in here rather than duplicating the fields onto
+    # PrescriptionEntry itself.
     chief_complaint = None
+    oral_examination = None
     if entry.consultation_id is not None:
         consultation = db.get(Consultation, entry.consultation_id)
         if consultation is not None:
             chief_complaint = consultation.chief_complaint
+            oral_examination = consultation.oral_examination
 
     content = pdf.render_single_prescription_pdf(
         patient,
@@ -94,6 +97,7 @@ def download_prescription_entry_pdf(
         doctor.specialty if doctor else None,
         doctor.registration_no if doctor else None,
         chief_complaint,
+        oral_examination,
     )
     return _pdf_response(
         content, f"prescription-{pdf.patient_id_str(patient.patient_number)}-{entry_id.hex[:8]}.pdf"
