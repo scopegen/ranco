@@ -121,17 +121,15 @@ table.field-table-2col td {{ padding: 3px 0; font-size: 9.5pt; vertical-align: t
 table.field-table-2col .field-label {{ width: 20%; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
 table.field-table-2col .field-colon {{ width: 3%; color: {INK_SOFT}; }}
 table.field-table-2col .field-value {{ width: 27%; color: {INK}; }}
-/* The prescription's Date/Day stamp — small and right-aligned (via the
-   align="right" attribute on the <table> itself; xhtml2pdf has no float/
-   flex, so that's its supported way to place a block off to one side).
-   width: auto keeps it just wide enough for its own content instead of
-   stretching full-width like field-table, and the row padding is tighter
-   since it's only two short rows, not a real content section. */
-table.date-block {{ width: auto; border-collapse: collapse; margin-bottom: 12px; }}
-table.date-block td {{ padding: 0 0 1px; font-size: 8pt; vertical-align: top; }}
-table.date-block .field-label {{ width: 30pt; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
-table.date-block .field-colon {{ width: 8pt; color: {INK_SOFT}; }}
-table.date-block .field-value {{ color: {INK}; white-space: nowrap; }}
+/* The prescription's Date/Day stamp — small and right-aligned. A nested
+   <table align="right"> doesn't actually right-align in xhtml2pdf (block
+   tables render at their container's full width regardless of the align
+   attribute), so this is plain right-aligned text instead — the same
+   text-align:right-on-a-block technique already proven to work for
+   .doctor-cell/.invoice-meta-cell above. */
+.date-stamp {{ text-align: right; margin-bottom: 12px; }}
+.date-stamp p {{ margin: 0 0 2px; font-size: 8pt; }}
+.date-stamp p:last-child {{ margin-bottom: 0; }}
 .entry {{ margin-bottom: 16px; padding: 10px 0 14px; border-bottom: 1px solid {RULE}; }}
 .entry-page {{ margin-top: 6px; }}
 .rx-date {{ font-size: 12pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 10px; }}
@@ -478,15 +476,14 @@ def render_single_prescription_pdf(
         chief_complaint=chief_complaint,
         oral_examination=oral_examination,
     )
-    # Right-aligned (align="right" — xhtml2pdf has no float/flex, this is
-    # its documented way to place a block off to one side) and smaller/
-    # tighter than the shared field-table style, since it's just a quick
-    # Date/Day stamp rather than a real content section.
+    # Right-aligned, smaller/tighter than the shared field-table style —
+    # see the .date-stamp CSS comment for why this is plain text, not a
+    # nested table.
     date_block = (
-        f'<table class="date-block" align="right">'
-        f'{_field_row("Date", entry.created_at.strftime("%d %b %Y"))}'
-        f'{_field_row("Day", entry.created_at.strftime("%A"))}'
-        f"</table>"
+        f'<div class="date-stamp">'
+        f'<p><span class="label">Date:</span> {entry.created_at.strftime("%d %b %Y")}</p>'
+        f'<p><span class="label">Day:</span> {entry.created_at.strftime("%A")}</p>'
+        f"</div>"
     )
     html = f"""
     <html><head><style>{BASE_CSS}</style></head>
