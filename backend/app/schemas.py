@@ -158,9 +158,15 @@ class ConsultationDiscountUpdate(BaseModel):
 
 
 class TreatmentCreate(BaseModel):
-    consultation_id: uuid.UUID
+    """Adds a treatment directly from the Treatments tab — pending, no
+    consultation, no start date yet. See TreatmentStartRequest for the
+    separate "start it" step."""
+
     service_id: uuid.UUID
     doctor_id: uuid.UUID
+
+
+class TreatmentStartRequest(BaseModel):
     started_at: date
 
 
@@ -170,9 +176,12 @@ class TreatmentOut(BaseModel):
     patient_id: uuid.UUID
     service_id: uuid.UUID
     doctor_id: uuid.UUID
-    consultation_id: uuid.UUID
+    # Only ever set on treatments created the older way, via a consultation's
+    # recommended services — never set on one added from the Treatments tab.
+    consultation_id: uuid.UUID | None
     status: TreatmentStatus
-    started_at: date
+    # Null while pending (not started yet).
+    started_at: date | None
     completed_at: date | None
     # Snapshot taken when the treatment started — see the model field's
     # comment. Exposed so the frontend can show "service charge" without a

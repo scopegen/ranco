@@ -7,7 +7,18 @@ from sqlalchemy.orm import Session, selectinload
 from app import pdf
 from app.auth.dependencies import get_current_staff, require_admin
 from app.database import get_db
-from app.models import Consultation, Invoice, InvoiceLine, Patient, PrescriptionEntry, Service, Staff, Treatment, Visit
+from app.models import (
+    Consultation,
+    Invoice,
+    InvoiceLine,
+    Patient,
+    PrescriptionEntry,
+    Service,
+    Staff,
+    Treatment,
+    TreatmentStatus,
+    Visit,
+)
 from app.routers.billing import _patient_billing_totals
 from app.routers.consultations import _consultation_charge
 from app.routers.treatments import _treatment_charge
@@ -113,7 +124,13 @@ def download_history_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
     consultations = list(db.scalars(select(Consultation).where(Consultation.patient_id == patient_id)))
-    treatments = list(db.scalars(select(Treatment).where(Treatment.patient_id == patient_id)))
+    # Pending treatments (added but not started) have no started_at yet and
+    # aren't billed — same exclusion as the billing-history endpoint.
+    treatments = list(
+        db.scalars(
+            select(Treatment).where(Treatment.patient_id == patient_id, Treatment.status != TreatmentStatus.pending)
+        )
+    )
     prescriptions = list(db.scalars(select(PrescriptionEntry).where(PrescriptionEntry.patient_id == patient_id)))
 
     consultation_charge_by_id: dict = {c.id: _consultation_charge(c) for c in consultations}

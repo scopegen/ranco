@@ -46,9 +46,17 @@ export function TimelineTab({ patient, data }: { patient: Patient; data: Patient
       description: consultation.oralExamination,
       pill: <PaymentStatusPill status={consultation.paymentStatus} />,
     })
+  }
 
-    for (const treatment of data.treatments.filter((t) => t.consultationId === consultation.id)) {
-      const serviceLabel = serviceName(treatment.serviceId)
+  // Treatments no longer nest under a consultation — one may not have one
+  // at all (added directly from the Treatments tab) — so they get their own
+  // top-level loop, merged into the same timeline by date at the end.
+  for (const treatment of data.treatments) {
+    const serviceLabel = serviceName(treatment.serviceId)
+
+    // Pending (added, not started) treatments have nothing to show yet —
+    // no start date, no visits, no invoice possible.
+    if (treatment.startedAt) {
       events.push({
         date: treatment.startedAt,
         hasTime: false,
@@ -56,37 +64,37 @@ export function TimelineTab({ patient, data }: { patient: Patient; data: Patient
         title: `${serviceLabel} started`,
         description: `assigned to ${doctorName(treatment.doctorId)}`,
       })
+    }
 
-      if (treatment.completedAt) {
-        events.push({
-          date: treatment.completedAt,
-          hasTime: false,
-          icon: <ClipboardList size={16} />,
-          title: `${serviceLabel} finished`,
-        })
-      }
+    if (treatment.completedAt) {
+      events.push({
+        date: treatment.completedAt,
+        hasTime: false,
+        icon: <ClipboardList size={16} />,
+        title: `${serviceLabel} finished`,
+      })
+    }
 
-      for (const visit of data.visitsByTreatment[treatment.id] ?? []) {
-        // Visits are an activity log only now — no per-visit price or
-        // payment status; the treatment as a whole is billed once.
-        events.push({
-          date: visit.visitDate,
-          hasTime: false,
-          icon: <CalendarCheck size={16} />,
-          title: `Visit — ${serviceLabel}`,
-        })
-      }
+    for (const visit of data.visitsByTreatment[treatment.id] ?? []) {
+      // Visits are an activity log only now — no per-visit price or
+      // payment status; the treatment as a whole is billed once.
+      events.push({
+        date: visit.visitDate,
+        hasTime: false,
+        icon: <CalendarCheck size={16} />,
+        title: `Visit — ${serviceLabel}`,
+      })
+    }
 
-      const invoice = invoiceByTreatmentId[treatment.id]
-      if (invoice) {
-        events.push({
-          date: invoice.issuedAt,
-          hasTime: true,
-          icon: <Receipt size={16} />,
-          title: 'Invoice generated',
-          description: `${formatINR(invoice.finalTotal)} via ${invoice.paymentMode.toUpperCase()}`,
-        })
-      }
+    const invoice = invoiceByTreatmentId[treatment.id]
+    if (invoice) {
+      events.push({
+        date: invoice.issuedAt,
+        hasTime: true,
+        icon: <Receipt size={16} />,
+        title: 'Invoice generated',
+        description: `${formatINR(invoice.finalTotal)} via ${invoice.paymentMode.toUpperCase()}`,
+      })
     }
   }
 

@@ -86,9 +86,9 @@ interface RawTreatment {
   patient_id: string
   service_id: string
   doctor_id: string
-  consultation_id: string
-  status: 'ongoing' | 'finished'
-  started_at: string
+  consultation_id: string | null
+  status: 'pending' | 'ongoing' | 'finished'
+  started_at: string | null
   completed_at: string | null
   service_price: number
   discount_type: 'percent' | 'amount' | null
@@ -252,6 +252,8 @@ const toTreatment = (r: RawTreatment): Treatment => ({
   discountType: r.discount_type,
   discountValue: r.discount_value,
 })
+
+
 
 const toPatientPayment = (r: RawPatientPayment): PatientPayment => ({
   id: r.id,
@@ -439,10 +441,13 @@ export const clinicalApi = {
   // treatments
   listTreatments: (patientId: string) =>
     api.get<RawTreatment[]>(`/patients/${patientId}/treatments`).then((rs) => rs.map(toTreatment)),
-  startTreatment: (
-    consultationId: string,
-    input: { consultation_id: string; service_id: string; doctor_id: string; started_at: string },
-  ) => api.post<RawTreatment>(`/consultations/${consultationId}/treatments`, input).then(toTreatment),
+  // Added straight from the Treatments tab — pending, no consultation, no
+  // start date yet. See startTreatment below for the separate "start it"
+  // step.
+  addTreatment: (patientId: string, input: { service_id: string; doctor_id: string }) =>
+    api.post<RawTreatment>(`/patients/${patientId}/treatments`, input).then(toTreatment),
+  startTreatment: (treatmentId: string, input: { started_at: string }) =>
+    api.post<RawTreatment>(`/treatments/${treatmentId}/start`, input).then(toTreatment),
   handoffTreatment: (treatmentId: string, input: { to_doctor_id: string; reason?: string }) =>
     api.post<RawTreatmentHandoff>(`/treatments/${treatmentId}/handoff`, input).then(toHandoff),
   // Discounts stay a per-service concern even though payment is now

@@ -32,7 +32,11 @@ export function TreatmentsOverview() {
       }),
     ).then((groups) => {
       if (cancelled) return
-      const flat = groups.flat().sort((a, b) => b.treatment.startedAt.localeCompare(a.treatment.startedAt))
+      // Pending treatments (added, not started) have no start date — sort
+      // them to the bottom of this "most recently started first" list.
+      const flat = groups
+        .flat()
+        .sort((a, b) => (b.treatment.startedAt ?? '').localeCompare(a.treatment.startedAt ?? ''))
       setRows(flat)
     })
 
@@ -74,10 +78,14 @@ export function TreatmentsOverview() {
                   </td>
                   <td className="px-4 py-3 text-ink-soft">{serviceName(treatment.serviceId)}</td>
                   <td className="px-4 py-3 text-ink-soft">{doctorName(treatment.doctorId)}</td>
-                  <td className="px-4 py-3 text-ink-soft">{formatDate(treatment.startedAt)}</td>
+                  <td className="px-4 py-3 text-ink-soft">
+                    {treatment.startedAt ? formatDate(treatment.startedAt) : '—'}
+                  </td>
                   <td className="px-4 py-3">
                     {treatment.status === 'finished' ? (
                       <Pill variant="solid">Finished</Pill>
+                    ) : treatment.status === 'pending' ? (
+                      <Pill variant="warning">Pending</Pill>
                     ) : (
                       <Pill variant="success">Ongoing</Pill>
                     )}

@@ -77,10 +77,11 @@ interface ClinicContextValue {
     discount: { type: 'percent' | 'amount'; value: number } | null,
   ) => Promise<Consultation>
 
-  startTreatment: (
-    consultationId: string,
-    input: { serviceId: string; doctorId: string; startedAt: string },
-  ) => Promise<Treatment>
+  // Added straight from the Treatments tab — pending, no consultation, no
+  // start date yet.
+  addTreatment: (patientId: string, input: { serviceId: string; doctorId: string }) => Promise<Treatment>
+  // Moves a pending treatment to ongoing, starting today (or a chosen date).
+  startTreatment: (treatmentId: string, input: { startedAt: string }) => Promise<Treatment>
 
   logVisit: (treatmentId: string, input: { visitDate: string }) => Promise<Visit>
 
@@ -258,16 +259,15 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  async function startTreatment(
-    consultationId: string,
-    input: { serviceId: string; doctorId: string; startedAt: string },
-  ) {
-    return clinicalApi.startTreatment(consultationId, {
-      consultation_id: consultationId,
+  async function addTreatment(patientId: string, input: { serviceId: string; doctorId: string }) {
+    return clinicalApi.addTreatment(patientId, {
       service_id: input.serviceId,
       doctor_id: input.doctorId,
-      started_at: input.startedAt,
     })
+  }
+
+  async function startTreatment(treatmentId: string, input: { startedAt: string }) {
+    return clinicalApi.startTreatment(treatmentId, { started_at: input.startedAt })
   }
 
   async function logVisit(treatmentId: string, input: { visitDate: string }) {
@@ -405,6 +405,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         addConsultation,
         updateConsultation,
         updateConsultationDiscount,
+        addTreatment,
         startTreatment,
         logVisit,
         endTreatment,

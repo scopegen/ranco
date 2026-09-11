@@ -57,6 +57,10 @@ class PaymentMode(str, PyEnum):
 
 
 class TreatmentStatus(str, PyEnum):
+    # Added from the Treatments tab, not yet started — no consultation, no
+    # started_at, and excluded from every billing total/history/document
+    # until it actually starts.
+    pending = "pending"
     ongoing = "ongoing"
     finished = "finished"
 
@@ -172,21 +176,27 @@ class Treatment(Base):
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("patients.id"), nullable=False)
     service_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("services.id"), nullable=False)
     doctor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
-    consultation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("consultations.id"), nullable=False)
+    # Nullable — a treatment added directly from the Treatments tab isn't
+    # tied to any consultation at all. Only ever set on treatments created
+    # the older way (via a consultation's recommended services); never set
+    # on new ones.
+    consultation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("consultations.id"))
     status: Mapped[TreatmentStatus] = mapped_column(
-        Enum(TreatmentStatus, name="treatment_status"), default=TreatmentStatus.ongoing, nullable=False
+        Enum(TreatmentStatus, name="treatment_status"), default=TreatmentStatus.pending, nullable=False
     )
-    started_at: Mapped[date] = mapped_column(Date, nullable=False)
+    # Null while pending (not started yet). Set once, when the treatment
+    # actually starts, and never changed after that.
+    started_at: Mapped[date | None] = mapped_column(Date)
     completed_at: Mapped[date | None] = mapped_column(Date)
     # Billing (separate from the older per-treatment Invoice below, which is
     # a distinct generate-a-PDF flow left untouched for now).
     #
     # service_price is a SNAPSHOT of Service.listed_price taken the moment
-    # the treatment is started — deliberately NOT looked up live from the
+    # the treatment is added — deliberately NOT looked up live from the
     # service catalog. If the clinic later raises/lowers that service's
-    # price, treatments already in progress (or finished) must keep billing
-    # at the price the patient was originally quoted; only new treatments
-    # started after the change pick up the new catalog price.
+    # price, treatments already added (pending, in progress, or finished)
+    # must keep billing at the price quoted when they were added; only new
+    # treatments added after the change pick up the new catalog price.
     service_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     discount_type: Mapped[str | None] = mapped_column(String(10))
     discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2))

@@ -7,7 +7,7 @@ import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatDate } from '../../../lib/date'
 import { formatRx } from '../../../lib/rx'
-import type { Consultation, PrescriptionEntry, RxItem, Treatment, Visit } from '../../../types/clinical'
+import type { PrescriptionEntry, RxItem, Treatment, Visit } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 import { CategorizedServicePicker, PrescriptionBlock, RxRowsField } from './ConsultationsTab'
 
@@ -17,43 +17,12 @@ interface Props {
   onChange: () => void
 }
 
-interface PendingItem {
-  consultation: Consultation
-  // The specific recommended service this prompt is for — a consultation
-  // that recommended nothing doesn't get a prompt at all (there'd be
-  // nothing to start), so this is always a real service now.
-  serviceId: string
-}
-
 export function TreatmentsTab({ patient, data, onChange }: Props) {
-  // A consultation with a recommended service moves here, as an actionable
-  // "start treatment" prompt, the moment it's saved — the doctor no longer
-  // starts a treatment from inside the consultation itself. A consultation
-  // can recommend several services; each one that doesn't have a treatment
-  // yet gets its own prompt, independent of the others, so starting one
-  // doesn't hide the rest. A consultation that recommended nothing just
-  // doesn't show up here.
-  const pendingItems: PendingItem[] = []
-  for (const consultation of data.consultations) {
-    const startedServiceIds = new Set(
-      data.treatments.filter((t) => t.consultationId === consultation.id).map((t) => t.serviceId),
-    )
-    for (const serviceId of consultation.recommendedServiceIds) {
-      if (!startedServiceIds.has(serviceId)) {
-        pendingItems.push({ consultation, serviceId })
-      }
-    }
-  }
-  pendingItems.sort((a, b) => b.consultation.consultDate.localeCompare(a.consultation.consultDate))
-
-  if (data.treatments.length === 0 && pendingItems.length === 0) {
-    return <p className="text-ink-soft">No consultations yet — add one from the Consultations tab.</p>
-  }
-
   // Most actionable first: ongoing treatments (log a visit / end it), then
-  // consultations awaiting a treatment to start, then finished ones last —
-  // those are just the historical record.
+  // ones added but not yet started, then finished ones last — those are
+  // just the historical record.
   const ongoingTreatments = data.treatments.filter((t) => t.status === 'ongoing')
+  const pendingTreatments = data.treatments.filter((t) => t.status === 'pending')
   const finishedTreatments = data.treatments.filter((t) => t.status === 'finished')
 
   function renderTreatmentCard(treatment: Treatment) {
@@ -71,115 +40,59 @@ export function TreatmentsTab({ patient, data, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
+      <AddTreatmentSection patient={patient} onChange={onChange} />
+
+      {data.treatments.length === 0 && (
+        <p className="text-ink-soft">No treatments yet — add one above to get started.</p>
+      )}
+
       {ongoingTreatments.map(renderTreatmentCard)}
-      {pendingItems.map((item) => (
-        <StartTreatmentCard
-          key={`${item.consultation.id}-${item.serviceId}`}
-          consultation={item.consultation}
-          recommendedServiceId={item.serviceId}
-          onChange={onChange}
-        />
+      {pendingTreatments.map((treatment) => (
+        <PendingTreatmentCard key={treatment.id} treatment={treatment} onChange={onChange} />
       ))}
       {finishedTreatments.map(renderTreatmentCard)}
     </div>
   )
 }
 
-function StartTreatmentCard({
-  consultation,
-  recommendedServiceId,
-  onChange,
-}: {
-  consultation: Consultation
-  recommendedServiceId: string
-  onChange: () => void
-}) {
-  const { doctors, services, doctorName, serviceName, startTreatment, updateConsultation } = useClinic()
+function AddTreatmentSection({ patient, onChange }: { patient: Patient; onChange: () => void }) {
+  const { doctors, services, addTreatment } = useClinic()
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [serviceId, setServiceId] = useState(recommendedServiceId)
-  const [doctorId, setDoctorId] = useState(consultation.doctorId ?? doctors[0]?.id)
+  const [serviceId, setServiceId] = useState('')
+  const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? '')
   const [error, setError] = useState<string | null>(null)
-  const [removing, setRemoving] = useState(false)
-  const [removeError, setRemoveError] = useState<string | null>(null)
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
     try {
-      await startTreatment(consultation.id, { serviceId, doctorId, startedAt: today() })
+      await addTreatment(patient.id, { serviceId, doctorId })
+      setServiceId('')
+      setFormOpen(false)
       onChange()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start treatment')
+      setError(err instanceof Error ? err.message : 'Failed to add the treatment')
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Drops this service from the consultation's recommended list — same
-  // "full replace" pattern the edit-consultation form already uses.
-  async function handleRemove() {
-    if (!window.confirm(`Remove "${serviceName(recommendedServiceId)}" from this consultation's recommended treatments?`)) return
-    setRemoving(true)
-    setRemoveError(null)
-    try {
-      await updateConsultation(consultation.patientId, consultation.id, {
-        doctorId: consultation.doctorId,
-        consultDate: consultation.consultDate,
-        fee: consultation.fee,
-        chiefComplaint: consultation.chiefComplaint,
-        oralExamination: consultation.oralExamination,
-        rx: consultation.rx,
-        paymentStatus: consultation.paymentStatus,
-        paymentMode: consultation.paymentMode,
-        recommendedServiceIds: consultation.recommendedServiceIds.filter((id) => id !== recommendedServiceId),
-        recommendationNote: consultation.recommendationNote,
-      })
-      onChange()
-    } catch (err) {
-      setRemoveError(err instanceof Error ? err.message : 'Failed to remove the recommendation')
-      setRemoving(false)
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-subheading font-medium text-ink">{serviceName(recommendedServiceId)}</p>
-          <p className="text-[12px] text-ink-faint">
-            {doctorName(consultation.doctorId)} &middot; consulted {formatDate(consultation.consultDate)}
-          </p>
-          {consultation.recommendationNote && (
-            <p className="mt-1 text-[12px] italic text-ink-soft">&ldquo;{consultation.recommendationNote}&rdquo;</p>
-          )}
-        </div>
-        <Pill variant="warning">Pending</Pill>
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button variant={formOpen ? 'ghost' : 'primary'} onClick={() => setFormOpen((v) => !v)}>
+          {formOpen ? 'Cancel' : '+ Add treatment'}
+        </Button>
       </div>
 
-      {!formOpen && (
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" onClick={() => setFormOpen(true)}>
-            Start treatment
-          </Button>
-          <button
-            type="button"
-            onClick={handleRemove}
-            disabled={removing}
-            aria-label="Remove recommended treatment"
-            title="Remove recommended treatment"
-            className="flex items-center justify-center rounded-lg bg-white p-2.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      )}
-      {removeError && <p className="text-[13px] text-crit">{removeError}</p>}
-
       {formOpen && (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-white p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-4 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm"
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 rounded-lg bg-white p-4">
             <CategorizedServicePicker label="Service" required services={services} value={serviceId} onChange={setServiceId} />
             <SelectField
               label="Assigned doctor"
@@ -191,8 +104,8 @@ function StartTreatmentCard({
           </div>
           {error && <p className="text-[13px] text-crit">{error}</p>}
           <div className="flex gap-3">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'Starting…' : 'Start treatment'}
+            <Button type="submit" disabled={submitting || !serviceId}>
+              {submitting ? 'Adding…' : 'Add treatment'}
             </Button>
             <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>
               Cancel
@@ -200,6 +113,69 @@ function StartTreatmentCard({
           </div>
         </form>
       )}
+    </div>
+  )
+}
+
+function PendingTreatmentCard({ treatment, onChange }: { treatment: Treatment; onChange: () => void }) {
+  const { doctorName, serviceName, startTreatment, deleteTreatment } = useClinic()
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  async function handleStart() {
+    setStarting(true)
+    setStartError(null)
+    try {
+      await startTreatment(treatment.id, { startedAt: today() })
+      onChange()
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : 'Failed to start treatment')
+      setStarting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete this ${serviceName(treatment.serviceId)} treatment? This can't be undone.`)) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteTreatment(treatment.id)
+      onChange()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete the treatment')
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-accent bg-accent-tint p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-subheading font-medium text-ink">{serviceName(treatment.serviceId)}</p>
+          <p className="text-[12px] text-ink-faint">{doctorName(treatment.doctorId)}</p>
+        </div>
+        <Pill variant="warning">Pending</Pill>
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="secondary" onClick={handleStart} disabled={starting}>
+          {starting ? 'Starting…' : 'Start treatment'}
+        </Button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          aria-label="Delete treatment"
+          title="Delete treatment"
+          className="flex items-center justify-center rounded-lg bg-white p-2.5 text-ink-soft transition-colors hover:bg-crit-soft hover:text-crit disabled:opacity-50"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+      {startError && <p className="text-[13px] text-crit">{startError}</p>}
+      {deleteError && <p className="text-[13px] text-crit">{deleteError}</p>}
     </div>
   )
 }
@@ -268,7 +244,8 @@ function TreatmentCard({
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-[12px] text-ink-faint">
-          started {formatDate(treatment.startedAt)}
+          {/* Only pending treatments (rendered separately, as PendingTreatmentCard) ever have a null startedAt */}
+          started {formatDate(treatment.startedAt!)}
           {treatment.completedAt && ` · finished ${formatDate(treatment.completedAt)}`}
         </p>
         {treatment.status === 'ongoing' && (

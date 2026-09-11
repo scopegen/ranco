@@ -220,6 +220,10 @@ export function Dashboard() {
         }
 
         for (const treatment of treatments) {
+          // Pending (added, not started) treatments aren't performed or
+          // billed yet — skip them for both the service stats and revenue.
+          if (treatment.status === 'pending') continue
+
           countsByService[treatment.serviceId] = (countsByService[treatment.serviceId] ?? 0) + 1
           revenueByServiceMap[treatment.serviceId] = (revenueByServiceMap[treatment.serviceId] ?? 0) + treatmentCharge(treatment)
 
@@ -228,7 +232,8 @@ export function Dashboard() {
               id: treatment.id,
               to: `/admin/patients/${code}/treatments`,
               primary: patient.name,
-              secondary: `${serviceName(treatment.serviceId)} · started ${formatDate(treatment.startedAt)}`,
+              // Guaranteed set — only a pending treatment (skipped above) has no startedAt.
+              secondary: `${serviceName(treatment.serviceId)} · started ${formatDate(treatment.startedAt!)}`,
             })
           }
         }

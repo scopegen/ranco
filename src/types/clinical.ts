@@ -1,7 +1,7 @@
 export type PaymentMode = 'cash' | 'card' | 'upi'
 export type PaymentStatus = 'paid' | 'unpaid'
 export type StaffRole = 'admin' | 'doctor'
-export type TreatmentStatus = 'ongoing' | 'finished'
+export type TreatmentStatus = 'pending' | 'ongoing' | 'finished'
 export type ServiceType = 'dental' | 'lab'
 
 export const CONSULTATION_FEE = 500
@@ -60,13 +60,17 @@ export interface Treatment {
   patientId: string
   serviceId: string
   doctorId: string
-  consultationId: string
+  // Only set on a treatment created the older way, via a consultation's
+  // recommended services — null on one added from the Treatments tab.
+  consultationId: string | null
   status: TreatmentStatus
-  startedAt: string
+  // Null while pending (added but not started yet).
+  startedAt: string | null
   completedAt?: string
-  // Snapshot of the service's listed price taken when the treatment started
-  // — what this treatment actually contributes to the patient's combined
-  // bill is derived from this, never from the service's live catalog price.
+  // Snapshot of the service's listed price taken when the treatment was
+  // added — what this treatment actually contributes to the patient's
+  // combined bill is derived from this, never from the service's live
+  // catalog price.
   servicePrice: number
   discountType?: 'percent' | 'amount' | null
   discountValue?: number | null

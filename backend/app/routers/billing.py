@@ -18,6 +18,7 @@ from app.models import (
     Staff,
     Treatment,
     TreatmentPayment,
+    TreatmentStatus,
 )
 from app.routers.consultations import _consultation_charge
 from app.routers.treatments import _treatment_charge
@@ -28,9 +29,15 @@ router = APIRouter(tags=["billing"])
 
 def _patient_billing_totals(db: Session, patient_id: uuid.UUID) -> tuple[float, float]:
     """(total_billed, total_paid) across every consultation and treatment
-    this patient has — see PatientBillingSummary for what these mean."""
+    this patient has — see PatientBillingSummary for what these mean.
+    Pending treatments (added but not yet started) are excluded — they
+    aren't billed until they start."""
     consultations = list(db.scalars(select(Consultation).where(Consultation.patient_id == patient_id)))
-    treatments = list(db.scalars(select(Treatment).where(Treatment.patient_id == patient_id)))
+    treatments = list(
+        db.scalars(
+            select(Treatment).where(Treatment.patient_id == patient_id, Treatment.status != TreatmentStatus.pending)
+        )
+    )
 
     total_billed = 0.0
     total_paid = 0.0
@@ -108,7 +115,13 @@ def get_billing_history(patient_id: uuid.UUID, db: Session = Depends(get_db), _a
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
     consultations = list(db.scalars(select(Consultation).where(Consultation.patient_id == patient_id)))
-    treatments = list(db.scalars(select(Treatment).where(Treatment.patient_id == patient_id)))
+    # Pending treatments (added but not started) have no started_at yet and
+    # aren't billed — leave them out of the history entirely.
+    treatments = list(
+        db.scalars(
+            select(Treatment).where(Treatment.patient_id == patient_id, Treatment.status != TreatmentStatus.pending)
+        )
+    )
     service_ids = {t.service_id for t in treatments}
     services = (
         {s.id: s for s in db.scalars(select(Service).where(Service.id.in_(service_ids)))} if service_ids else {}

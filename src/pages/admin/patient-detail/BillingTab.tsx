@@ -100,7 +100,11 @@ export function BillingTab({ patient, data, onChange, openPaymentSignal }: Props
 
   const rows: Row[] = [
     ...data.consultations.map((c): Row => ({ kind: 'consultation', date: c.consultDate, consultation: c })),
-    ...data.treatments.map((t): Row => ({ kind: 'treatment', date: t.startedAt, treatment: t })),
+    // Pending treatments (added, not started) aren't billed yet and have no
+    // start date — nothing to show here until they actually start.
+    ...data.treatments
+      .filter((t) => t.status !== 'pending')
+      .map((t): Row => ({ kind: 'treatment', date: t.startedAt!, treatment: t })),
   ].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
@@ -364,7 +368,7 @@ function GenerateInvoiceSection({
   // Invoices show the full listed price, always — a treatment/consultation
   // just needs to not already be on an invoice. Status (ongoing/finished) or
   // payment status no longer matter here since invoicing doesn't touch them.
-  const invoiceableTreatments = treatments.filter((t) => !invoiceByTreatmentId[t.id])
+  const invoiceableTreatments = treatments.filter((t) => t.status !== 'pending' && !invoiceByTreatmentId[t.id])
   const invoiceableConsultations = consultations.filter((c) => !invoiceByConsultationId[c.id])
   const [open, setOpen] = useState(false)
   const [selectedTreatments, setSelectedTreatments] = useState<Set<string>>(new Set())
@@ -831,7 +835,8 @@ function TreatmentBillingCard({
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-4 shadow-sm">
       <CardHeader
         label={serviceLabel}
-        date={treatment.startedAt}
+        // TreatmentBillingCard only ever receives non-pending treatments (see the rows filter above)
+        date={treatment.startedAt!}
         charge={savedCharge}
         discountLabel={discountLabel(treatment.discountType, treatment.discountValue)}
         expanded={expanded}
