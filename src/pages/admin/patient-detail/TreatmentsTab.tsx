@@ -340,7 +340,6 @@ function TreatmentCard({
                       diagnosis: input.prescription.diagnosis,
                       notes: input.prescription.notes,
                       advice: input.prescription.advice,
-                      nextVisit: input.prescription.nextVisit,
                     })
                   }
                   setVisitFormOpen(false)
@@ -360,7 +359,6 @@ interface PrescriptionInput {
   diagnosis?: string
   notes: string
   advice?: string
-  nextVisit?: string
 }
 
 function LogVisitForm({
@@ -377,7 +375,6 @@ function LogVisitForm({
   const [diagnosis, setDiagnosis] = useState('')
   const [rx, setRx] = useState<RxItem[]>([])
   const [advice, setAdvice] = useState('')
-  const [nextVisit, setNextVisit] = useState('')
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
@@ -386,8 +383,8 @@ function LogVisitForm({
       // No price/payment info collected here at all — billing happens
       // separately, on its own track. The amount is derived automatically
       // from the treatment's service by the caller. A medicine isn't
-      // required — a visit can be logged with just advice/next-visit notes
-      // and no new prescription-worthy medicine.
+      // required — a visit can be logged with just advice notes and no new
+      // prescription-worthy medicine.
       await onSubmit({
         visitDate,
         prescription: addRx
@@ -395,7 +392,6 @@ function LogVisitForm({
               diagnosis: diagnosis || undefined,
               notes: formatRx(rx),
               advice: advice || undefined,
-              nextVisit: nextVisit || undefined,
             }
           : undefined,
       })
@@ -417,7 +413,6 @@ function LogVisitForm({
           <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
           <RxRowsField value={rx} onChange={setRx} />
           <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
-          <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
         </div>
       )}
 

@@ -70,6 +70,7 @@ interface RawConsultation {
   fee: number
   chief_complaint: string
   oral_examination: string
+  xray_done: boolean
   rx: RawRxItem[]
   payment_status: PaymentStatus
   payment_mode: PaymentMode | null
@@ -175,7 +176,6 @@ interface RawPrescriptionEntry {
   diagnosis: string | null
   notes: string
   advice: string | null
-  next_visit: string | null
   added_by: string
   created_at: string
   last_edited_at: string | null
@@ -228,6 +228,7 @@ const toConsultation = (r: RawConsultation): Consultation => ({
   fee: r.fee,
   chiefComplaint: r.chief_complaint,
   oralExamination: r.oral_examination,
+  xrayDone: r.xray_done,
   rx: r.rx.map((item): RxItem => ({ medicine: item.medicine, frequency: item.frequency })),
   paymentStatus: r.payment_status,
   paymentMode: r.payment_mode ?? undefined,
@@ -321,7 +322,6 @@ const toPrescriptionEntry = (r: RawPrescriptionEntry): PrescriptionEntry => ({
   diagnosis: r.diagnosis ?? undefined,
   notes: r.notes,
   advice: r.advice ?? undefined,
-  nextVisit: r.next_visit ?? undefined,
   addedBy: r.added_by,
   createdAt: r.created_at,
   lastEditedAt: r.last_edited_at ?? undefined,
@@ -405,6 +405,7 @@ export const clinicalApi = {
       fee: number
       chief_complaint: string
       oral_examination: string
+      xray_done: boolean
       rx: RawRxItem[]
       payment_status: PaymentStatus
       payment_mode?: PaymentMode
@@ -421,6 +422,7 @@ export const clinicalApi = {
       fee: number
       chief_complaint: string
       oral_examination: string
+      xray_done: boolean
       rx: RawRxItem[]
       payment_status: PaymentStatus
       payment_mode?: PaymentMode
@@ -504,11 +506,10 @@ export const clinicalApi = {
     diagnosis?: string
     notes: string
     advice?: string
-    next_visit?: string
   }) => api.post<RawPrescriptionEntry>('/prescriptions', input).then(toPrescriptionEntry),
   editPrescription: (
     entryId: string,
-    input: { diagnosis?: string; notes: string; advice?: string; next_visit?: string },
+    input: { diagnosis?: string; notes: string; advice?: string },
   ) => api.patch<RawPrescriptionEntry>(`/prescriptions/${entryId}`, input).then(toPrescriptionEntry),
 
   // documents

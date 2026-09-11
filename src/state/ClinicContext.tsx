@@ -46,6 +46,7 @@ interface ClinicContextValue {
       fee: number
       chiefComplaint: string
       oralExamination: string
+      xrayDone: boolean
       rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
@@ -62,6 +63,7 @@ interface ClinicContextValue {
       fee: number
       chiefComplaint: string
       oralExamination: string
+      xrayDone: boolean
       rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
@@ -125,12 +127,11 @@ interface ClinicContextValue {
     diagnosis?: string
     notes: string
     advice?: string
-    nextVisit?: string
   }) => Promise<PrescriptionEntry>
 
   editPrescription: (
     entryId: string,
-    input: { diagnosis?: string; notes: string; advice?: string; nextVisit?: string },
+    input: { diagnosis?: string; notes: string; advice?: string },
   ) => Promise<PrescriptionEntry>
 
   addService: (
@@ -198,6 +199,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       fee: number
       chiefComplaint: string
       oralExamination: string
+      xrayDone: boolean
       rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
@@ -211,6 +213,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       fee: input.fee,
       chief_complaint: input.chiefComplaint,
       oral_examination: input.oralExamination,
+      xray_done: input.xrayDone,
       rx: input.rx,
       payment_status: input.paymentStatus,
       payment_mode: input.paymentMode,
@@ -228,6 +231,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       fee: number
       chiefComplaint: string
       oralExamination: string
+      xrayDone: boolean
       rx: RxItem[]
       paymentStatus: PaymentStatus
       paymentMode?: PaymentMode
@@ -241,6 +245,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       fee: input.fee,
       chief_complaint: input.chiefComplaint,
       oral_examination: input.oralExamination,
+      xray_done: input.xrayDone,
       rx: input.rx,
       payment_status: input.paymentStatus,
       payment_mode: input.paymentMode,
@@ -335,7 +340,6 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     diagnosis?: string
     notes: string
     advice?: string
-    nextVisit?: string
   }) {
     return clinicalApi.createPrescription({
       patient_id: input.patientId,
@@ -344,19 +348,14 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       diagnosis: input.diagnosis,
       notes: input.notes,
       advice: input.advice,
-      next_visit: input.nextVisit,
     })
   }
 
-  async function editPrescription(
-    entryId: string,
-    input: { diagnosis?: string; notes: string; advice?: string; nextVisit?: string },
-  ) {
+  async function editPrescription(entryId: string, input: { diagnosis?: string; notes: string; advice?: string }) {
     return clinicalApi.editPrescription(entryId, {
       diagnosis: input.diagnosis,
       notes: input.notes,
       advice: input.advice,
-      next_visit: input.nextVisit,
     })
   }
 

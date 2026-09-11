@@ -353,6 +353,7 @@ def _prescription_entry_html(
     page_mode: bool = False,
     chief_complaint: str | None = None,
     oral_examination: str | None = None,
+    xray_done: bool = False,
 ) -> str:
     """page_mode: used only by the per-entry prescription PDFs (single and
     combined), where each entry is its own standalone page with its own
@@ -360,9 +361,10 @@ def _prescription_entry_html(
     compact list-style rendering (page_mode=False), no date or doctor line
     is repeated in the body here; the date/day block is rendered separately,
     above the patient info, by the caller.
-    chief_complaint/oral_examination: only set when this entry is linked to a
-    consultation — consultations already capture both, so they're passed in
-    from there rather than duplicated onto PrescriptionEntry itself."""
+    chief_complaint/oral_examination/xray_done: only set when this entry is
+    linked to a consultation — consultations already capture all three, so
+    they're passed in from there rather than duplicated onto
+    PrescriptionEntry itself."""
     rx_lines = "".join(
         f'<div class="rx-line">{i + 1}. {_esc(line)}</div>'
         for i, line in enumerate(entry.notes.splitlines())
@@ -375,10 +377,8 @@ def _prescription_entry_html(
         f'<p><span class="label">Oral Examination:</span> {_esc(oral_examination)}</p>' if oral_examination else ""
     )
     diagnosis_html = f'<p><span class="label">Diagnosis:</span> {_esc(entry.diagnosis)}</p>' if entry.diagnosis else ""
+    xray_html = '<p><span class="label">X-ray:</span> Yes</p>' if xray_done else ""
     advice_html = f'<p><span class="label">Advice:</span> {_esc(entry.advice)}</p>' if entry.advice else ""
-    next_visit_html = (
-        f'<p><span class="label">Next Visit:</span> {_esc(entry.next_visit)}</p>' if entry.next_visit else ""
-    )
     specialty_str = f" &middot; {_esc(doctor_specialty)}" if doctor_specialty else ""
 
     if page_mode:
@@ -398,10 +398,10 @@ def _prescription_entry_html(
       {complaint_html}
       {oral_examination_html}
       {diagnosis_html}
+      {xray_html}
       <p class="rx-title"><i>Rx</i></p>
       {rx_lines or '<div class="rx-line">&mdash;</div>'}
       {advice_html}
-      {next_visit_html}
     </div>
     """
 
@@ -461,6 +461,7 @@ def render_single_prescription_pdf(
     doctor_reg_no: str | None = None,
     chief_complaint: str | None = None,
     oral_examination: str | None = None,
+    xray_done: bool = False,
 ) -> bytes:
     """One prescription entry, one PDF — the per-consultation/per-visit
     "view"/"download" buttons each hit this instead of the combined,
@@ -475,6 +476,7 @@ def render_single_prescription_pdf(
         page_mode=True,
         chief_complaint=chief_complaint,
         oral_examination=oral_examination,
+        xray_done=xray_done,
     )
     # Right-aligned, smaller/tighter than the shared field-table style —
     # see the .date-stamp CSS comment for why this is plain text, not a

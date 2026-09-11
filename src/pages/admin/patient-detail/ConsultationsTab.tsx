@@ -406,10 +406,10 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
     doctorId: string
     chiefComplaint: string
     oralExamination: string
+    xrayDone: boolean
     diagnosis: string
     rx: RxItem[]
     advice: string
-    nextVisit: string
     recommendedServiceIds: string[]
     recommendationNote?: string
   }) {
@@ -424,24 +424,24 @@ export function ConsultationsTab({ patient, data, onChange, initialFormOpen = fa
         fee: CONSULTATION_FEE,
         chiefComplaint: input.chiefComplaint,
         oralExamination: input.oralExamination,
+        xrayDone: input.xrayDone,
         rx: input.rx,
         paymentStatus: 'unpaid',
         recommendedServiceIds: input.recommendedServiceIds,
         recommendationNote: input.recommendationNote,
       })
-      // The prescription is just the diagnosis/rx/advice/next-visit fields
-      // on this same form — one save, no separate "add prescription" step.
-      // Skipped only when literally nothing prescription-related was
-      // entered — a medicine isn't required on its own (e.g. advice-only).
+      // The prescription is just the diagnosis/rx/advice fields on this same
+      // form — one save, no separate "add prescription" step. Skipped only
+      // when literally nothing prescription-related was entered — a
+      // medicine isn't required on its own (e.g. advice-only).
       const notes = formatRx(input.rx)
-      if (notes !== '' || input.diagnosis || input.advice || input.nextVisit) {
+      if (notes !== '' || input.diagnosis || input.advice) {
         await addPrescription({
           patientId: patient.id,
           consultationId: created.id,
           diagnosis: input.diagnosis || undefined,
           notes,
           advice: input.advice || undefined,
-          nextVisit: input.nextVisit || undefined,
         })
       }
       setFormOpen(false)
@@ -492,10 +492,10 @@ function NewConsultationForm({
     doctorId: string
     chiefComplaint: string
     oralExamination: string
+    xrayDone: boolean
     diagnosis: string
     rx: RxItem[]
     advice: string
-    nextVisit: string
     recommendedServiceIds: string[]
     recommendationNote?: string
   }) => void
@@ -504,10 +504,10 @@ function NewConsultationForm({
   const [doctorId, setDoctorId] = useState(doctors[0].id)
   const [chiefComplaint, setChiefComplaint] = useState('')
   const [oralExamination, setOralExamination] = useState('')
+  const [xrayDone, setXrayDone] = useState(false)
   const [diagnosis, setDiagnosis] = useState('')
   const [rx, setRx] = useState<RxItem[]>([])
   const [advice, setAdvice] = useState('')
-  const [nextVisit, setNextVisit] = useState('')
   const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>([])
   const [recommendationNote, setRecommendationNote] = useState('')
 
@@ -517,10 +517,10 @@ function NewConsultationForm({
       doctorId,
       chiefComplaint,
       oralExamination,
+      xrayDone,
       diagnosis,
       rx: rx.filter((item) => item.medicine.trim() !== ''),
       advice,
-      nextVisit,
       recommendedServiceIds,
       recommendationNote: recommendationNote || undefined,
     })
@@ -554,11 +554,19 @@ function NewConsultationForm({
 
       <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
 
+      <label className="flex items-center gap-2 text-body text-ink">
+        <input
+          type="checkbox"
+          checked={xrayDone}
+          onChange={(e) => setXrayDone(e.target.checked)}
+          className="h-4 w-4 accent-accent"
+        />
+        X-ray
+      </label>
+
       <RxRowsField value={rx} onChange={setRx} />
 
       <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
-
-      <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
 
       <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
 
@@ -670,10 +678,10 @@ function EditConsultationForm({
   const [consultDate, setConsultDate] = useState(consultation.consultDate)
   const [chiefComplaint, setChiefComplaint] = useState(consultation.chiefComplaint)
   const [oralExamination, setOralExamination] = useState(consultation.oralExamination)
+  const [xrayDone, setXrayDone] = useState(consultation.xrayDone)
   const [diagnosis, setDiagnosis] = useState(prescription?.diagnosis ?? '')
   const [rx, setRx] = useState<RxItem[]>(consultation.rx)
   const [advice, setAdvice] = useState(prescription?.advice ?? '')
-  const [nextVisit, setNextVisit] = useState(prescription?.nextVisit ?? '')
   const [recommendedServiceIds, setRecommendedServiceIds] = useState<string[]>(consultation.recommendedServiceIds)
   const [recommendationNote, setRecommendationNote] = useState(consultation.recommendationNote ?? '')
   const [submitting, setSubmitting] = useState(false)
@@ -693,6 +701,7 @@ function EditConsultationForm({
         fee: consultation.fee,
         chiefComplaint,
         oralExamination,
+        xrayDone,
         rx: filteredRx,
         paymentStatus: consultation.paymentStatus,
         paymentMode: consultation.paymentMode,
@@ -700,27 +709,25 @@ function EditConsultationForm({
         recommendationNote: recommendationNote || undefined,
       })
 
-      // The prescription is just these same diagnosis/rx/advice/next-visit
-      // fields, kept in sync with this one form — no separate prescription
-      // step. Update the existing entry if there is one; otherwise create
-      // one now if any of those fields has content (a medicine isn't
-      // required on its own); do nothing if there's still nothing to save.
+      // The prescription is just these same diagnosis/rx/advice fields, kept
+      // in sync with this one form — no separate prescription step. Update
+      // the existing entry if there is one; otherwise create one now if any
+      // of those fields has content (a medicine isn't required on its own);
+      // do nothing if there's still nothing to save.
       const notes = formatRx(filteredRx)
       if (prescription) {
         await editPrescription(prescription.id, {
           diagnosis: diagnosis || undefined,
           notes,
           advice: advice || undefined,
-          nextVisit: nextVisit || undefined,
         })
-      } else if (notes !== '' || diagnosis || advice || nextVisit) {
+      } else if (notes !== '' || diagnosis || advice) {
         await addPrescription({
           patientId: consultation.patientId,
           consultationId: consultation.id,
           diagnosis: diagnosis || undefined,
           notes,
           advice: advice || undefined,
-          nextVisit: nextVisit || undefined,
         })
       }
       onSaved()
@@ -758,11 +765,19 @@ function EditConsultationForm({
 
       <Field label="Diagnosis" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
 
+      <label className="flex items-center gap-2 text-body text-ink">
+        <input
+          type="checkbox"
+          checked={xrayDone}
+          onChange={(e) => setXrayDone(e.target.checked)}
+          className="h-4 w-4 accent-accent"
+        />
+        X-ray
+      </label>
+
       <RxRowsField value={rx} onChange={setRx} />
 
       <Field label="Advice" value={advice} onChange={(e) => setAdvice(e.target.value)} />
-
-      <Field label="Next visit" value={nextVisit} onChange={(e) => setNextVisit(e.target.value)} />
 
       <RecommendedServicesPicker services={services} value={recommendedServiceIds} onChange={setRecommendedServiceIds} />
 

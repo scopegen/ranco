@@ -147,6 +147,9 @@ class Consultation(Base):
     # rows keep their data (migration renames the column, doesn't drop it).
     chief_complaint: Mapped[str] = mapped_column(Text, nullable=False, default="")
     oral_examination: Mapped[str] = mapped_column(Text, nullable=False)
+    # Checked on the consultation form, shown as "X-ray: Yes" on that
+    # consultation's prescription when it is — omitted entirely otherwise.
+    xray_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # [{"medicine": "...", "frequency": "OD"}, ...] — structured so the
     # frequency can be a fixed dropdown instead of free text.
     rx: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
@@ -279,7 +282,6 @@ class PrescriptionEntry(Base):
     diagnosis: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str] = mapped_column(Text, nullable=False)  # the Rx itself — one line per medicine
     advice: Mapped[str | None] = mapped_column(Text)
-    next_visit: Mapped[str | None] = mapped_column(String(120))
     added_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

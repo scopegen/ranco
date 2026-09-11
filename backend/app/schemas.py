@@ -122,6 +122,7 @@ class ConsultationCreate(BaseModel):
     fee: float
     chief_complaint: str
     oral_examination: str
+    xray_done: bool = False
     rx: list[RxItem] = []
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None = None
@@ -138,6 +139,7 @@ class ConsultationOut(BaseModel):
     fee: float
     chief_complaint: str
     oral_examination: str
+    xray_done: bool
     rx: list[RxItem]
     payment_status: PaymentStatus
     payment_mode: PaymentMode | None
@@ -359,14 +361,12 @@ class PrescriptionEntryCreate(BaseModel):
     diagnosis: str | None = None
     notes: str
     advice: str | None = None
-    next_visit: str | None = None
 
 
 class PrescriptionEntryUpdate(BaseModel):
     diagnosis: str | None = None
     notes: str
     advice: str | None = None
-    next_visit: str | None = None
 
 
 class PrescriptionVersionOut(BaseModel):
@@ -387,7 +387,6 @@ class PrescriptionEntryOut(BaseModel):
     diagnosis: str | None
     notes: str
     advice: str | None
-    next_visit: str | None
     added_by: uuid.UUID
     created_at: datetime
     last_edited_at: datetime | None

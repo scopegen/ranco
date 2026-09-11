@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Cake, CalendarClock, IndianRupee, Stethoscope, Users, Wallet, X } from 'lucide-react'
+import { Cake, IndianRupee, Stethoscope, Users, Wallet, X } from 'lucide-react'
 import { usePatients } from '../../state/PatientsContext'
 import { useAuth } from '../../state/AuthContext'
 import { useClinic } from '../../state/ClinicContext'
@@ -37,7 +37,7 @@ interface ListItem {
   secondary: string
 }
 
-type StatKey = 'ongoing' | 'recall' | 'birthdays' | 'due' | 'paidToday'
+type StatKey = 'ongoing' | 'birthdays' | 'due' | 'paidToday'
 
 interface DashboardData {
   totalPatients: number
@@ -53,24 +53,6 @@ interface DashboardData {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const BIRTHDAY_WINDOW_DAYS = 30
-
-/** "after 5 days" / "in 2 weeks" (case-insensitive) relative to when the
- * prescription was written — anything else in this free-text field (it's
- * not a real date picker) is left unparsed and just doesn't count towards
- * recall, rather than risk guessing wrong. */
-const RECALL_PATTERN = /\b(?:after|in)\s+(\d+)\s*(day|days|week|weeks)\b/i
-
-function recallDueDate(createdAt: string, nextVisit: string): Date | null {
-  const match = nextVisit.match(RECALL_PATTERN)
-  if (!match) return null
-  const created = new Date(createdAt)
-  if (Number.isNaN(created.getTime())) return null
-  const amount = Number(match[1])
-  const days = match[2].toLowerCase().startsWith('week') ? amount * 7 : amount
-  const due = new Date(created)
-  due.setDate(due.getDate() + days)
-  return due
-}
 
 /** Days until this patient's next birthday (month/day only, year ignored),
  * or null if there's no full DOB on file (birth-year-only patients can't be
@@ -130,7 +112,6 @@ const PASTELS = [
 
 const STAT_LIST_META: Record<StatKey, { title: string; empty: string }> = {
   ongoing: { title: 'Ongoing Treatments', empty: 'No ongoing treatments.' },
-  recall: { title: 'Due for Re-call', empty: 'No one due for recall right now.' },
   birthdays: { title: 'Upcoming Birthdays', empty: 'No birthdays in the next 30 days.' },
   due: { title: 'Payment Dues', empty: 'No one has an outstanding balance.' },
   paidToday: { title: "Payments Today", empty: 'No payments recorded today.' },
@@ -155,14 +136,13 @@ export function Dashboard() {
     // two calls entirely rather than eating a 403 on every patient.
     Promise.all(
       patients.map(async (patient) => {
-        const [consultations, treatments, prescriptions, billingSummary, payments] = await Promise.all([
+        const [consultations, treatments, billingSummary, payments] = await Promise.all([
           clinicalApi.listConsultations(patient.id),
           clinicalApi.listTreatments(patient.id),
-          clinicalApi.listPrescriptionsForPatient(patient.id),
           isAdmin ? clinicalApi.getBillingSummary(patient.id) : Promise.resolve(null),
           isAdmin ? clinicalApi.listPatientPayments(patient.id) : Promise.resolve([]),
         ])
-        return { patient, consultations, treatments, prescriptions, billingSummary, payments }
+        return { patient, consultations, treatments, billingSummary, payments }
       }),
     ).then((groups) => {
       if (cancelled) return
@@ -173,7 +153,6 @@ export function Dashboard() {
       const countsByService: Record<string, number> = {}
       const lists: Record<StatKey, ListItem[]> = {
         ongoing: [],
-        recall: [],
         birthdays: [],
         due: [],
         paidToday: [],
@@ -190,7 +169,7 @@ export function Dashboard() {
       let paidSum = 0
       let outstandingSum = 0
 
-      for (const { patient, consultations, treatments, prescriptions, billingSummary, payments } of groups) {
+      for (const { patient, consultations, treatments, billingSummary, payments } of groups) {
         const code = formatPatientId(patient.patientNumber)
 
         if (billingSummary) {
@@ -253,18 +232,6 @@ export function Dashboard() {
 
         for (const consultation of consultations) {
           countsByDate[consultation.consultDate] = (countsByDate[consultation.consultDate] ?? 0) + 1
-        }
-
-        const isDueForRecall = prescriptions.some(
-          (p) => p.nextVisit && (recallDueDate(p.createdAt, p.nextVisit)?.getTime() ?? Infinity) <= now.getTime(),
-        )
-        if (isDueForRecall) {
-          lists.recall.push({
-            id: patient.id,
-            to: `/admin/patients/${code}`,
-            primary: patient.name,
-            secondary: patient.phone,
-          })
         }
       }
 
@@ -373,13 +340,6 @@ export function Dashboard() {
               value={data!.lists.ongoing.length}
               label="Ongoing Treatments"
               onClick={() => setOpenList('ongoing')}
-            />
-            <PastelStat
-              colorIndex={2}
-              icon={CalendarClock}
-              value={data!.lists.recall.length}
-              label="Due for Re-call"
-              onClick={() => setOpenList('recall')}
             />
             <PastelStat
               colorIndex={3}

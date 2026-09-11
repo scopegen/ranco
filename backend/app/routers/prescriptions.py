@@ -73,7 +73,6 @@ def edit_prescription(
     entry.diagnosis = payload.diagnosis
     entry.notes = payload.notes
     entry.advice = payload.advice
-    entry.next_visit = payload.next_visit
     entry.last_edited_at = datetime.now(timezone.utc)
 
     db.commit()

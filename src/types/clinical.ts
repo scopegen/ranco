@@ -42,6 +42,9 @@ export interface Consultation {
   fee: number
   chiefComplaint: string
   oralExamination: string
+  // Checked on the consultation form, shown on that consultation's
+  // prescription as "X-ray: Yes" when it is.
+  xrayDone: boolean
   rx: RxItem[]
   paymentStatus: PaymentStatus
   paymentMode?: PaymentMode
@@ -172,7 +175,6 @@ export interface PrescriptionEntry {
   diagnosis?: string
   notes: string
   advice?: string
-  nextVisit?: string
   addedBy: string
   createdAt: string
   lastEditedAt?: string
