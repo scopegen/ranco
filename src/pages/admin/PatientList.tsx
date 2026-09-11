@@ -254,10 +254,10 @@ export function PatientList() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <Link
-                            to={`${overviewPath}/treatments`}
+                            to={overviewPath}
                             onClick={(e) => e.stopPropagation()}
-                            aria-label={`View treatments for ${patient.name}`}
-                            title="View treatments"
+                            aria-label={`View ${patient.name}`}
+                            title="View"
                             className="rounded-md border border-accent bg-accent-tint px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent hover:text-white"
                           >
                             View
