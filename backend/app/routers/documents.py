@@ -90,18 +90,31 @@ def download_prescription_entry_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
     doctor = db.get(Staff, _prescribing_doctor_id(db, entry))
-    # Consultations already capture chief complaint, oral examination, and
-    # whether an X-ray was done — pull them in here rather than duplicating
-    # the fields onto PrescriptionEntry itself.
+    # Consultations already capture chief complaint, oral examination,
+    # whether an X-ray was done, and the recommended treatment — pull them
+    # in here rather than duplicating the fields onto PrescriptionEntry
+    # itself. Recommended services are stored as ids on the consultation;
+    # resolve them to names for display.
     chief_complaint = None
     oral_examination = None
     xray_done = False
+    recommended_services = None
+    recommendation_note = None
     if entry.consultation_id is not None:
         consultation = db.get(Consultation, entry.consultation_id)
         if consultation is not None:
             chief_complaint = consultation.chief_complaint
             oral_examination = consultation.oral_examination
             xray_done = consultation.xray_done
+            recommendation_note = consultation.recommendation_note
+            if consultation.recommended_service_ids:
+                services = db.scalars(
+                    select(Service).where(Service.id.in_(consultation.recommended_service_ids))
+                )
+                service_by_id = {s.id: s.name for s in services}
+                recommended_services = [
+                    service_by_id[sid] for sid in consultation.recommended_service_ids if sid in service_by_id
+                ]
 
     content = pdf.render_single_prescription_pdf(
         patient,
@@ -112,6 +125,8 @@ def download_prescription_entry_pdf(
         chief_complaint,
         oral_examination,
         xray_done,
+        recommended_services,
+        recommendation_note,
     )
     return _pdf_response(
         content, f"prescription-{pdf.patient_id_str(patient.patient_number)}-{entry_id.hex[:8]}.pdf"
