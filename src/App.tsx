@@ -14,6 +14,7 @@ import { PatientOverview } from './pages/admin/patient-detail/PatientOverview'
 import { TimelineSection, ConsultationsSection, TreatmentsSection, BillingSection } from './pages/admin/patient-detail/SectionPages'
 import { Services } from './pages/admin/Services'
 import { Doctors } from './pages/admin/Doctors'
+import { Settings } from './pages/admin/Settings'
 import { TreatmentsOverview } from './pages/admin/TreatmentsOverview'
 
 function App() {
@@ -49,6 +50,7 @@ function App() {
           <Route path="treatments" element={<TreatmentsOverview />} />
           <Route path="services" element={<Services />} />
           <Route path="doctors" element={<Doctors />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
 
         {/* Doctor and Admin share one role-aware shell — no separate panel to build.

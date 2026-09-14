@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { CircleUserRound, LogOut, Package, Stethoscope, UserCog, Users } from 'lucide-react'
+import { CircleUserRound, LogOut, Package, Settings, Stethoscope, UserCog, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../state/AuthContext'
 import { QuickAddMenu } from '../components/QuickAddMenu'
@@ -24,6 +24,12 @@ export function AdminLayout() {
   const location = useLocation()
   const hideMobileNav = isPatientDetailPath(location.pathname)
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || staff?.role === 'admin')
+  // The mobile bottom tab bar only ever shows Patients/Treatments — Services
+  // and Doctors are reachable from Settings instead, and the "+" QuickAddMenu
+  // button now sits inline between these two, so the bar stays exactly two
+  // items regardless of role.
+  const mobileNavItems = navItems.filter((item) => !item.adminOnly)
+  const isAdmin = staff?.role === 'admin'
 
   function handleLogout() {
     logout()
@@ -51,23 +57,39 @@ export function AdminLayout() {
               <p className="text-[12px] capitalize text-ink-faint">{staff?.role}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-body font-medium text-ink-soft transition-colors duration-150 hover:bg-paper-raised hover:text-ink"
-          >
-            <LogOut size={17} strokeWidth={2} />
-            Sign out
-          </button>
+          {isAdmin ? (
+            <Link
+              to="/admin/settings"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-body font-medium text-ink-soft transition-colors duration-150 hover:bg-paper-raised hover:text-ink"
+            >
+              <Settings size={17} strokeWidth={2} />
+              Settings
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-body font-medium text-ink-soft transition-colors duration-150 hover:bg-paper-raised hover:text-ink"
+            >
+              <LogOut size={17} strokeWidth={2} />
+              Sign out
+            </button>
+          )}
         </div>
       </header>
 
       {/* mobile top bar */}
       <header className="flex items-center justify-between border-b border-rule bg-white px-4 py-3 md:hidden">
         <Brand />
-        <button type="button" onClick={handleLogout} className="text-ink-soft">
-          <LogOut size={20} strokeWidth={2} />
-        </button>
+        {isAdmin ? (
+          <Link to="/admin/settings" className="text-ink-soft">
+            <Settings size={20} strokeWidth={2} />
+          </Link>
+        ) : (
+          <button type="button" onClick={handleLogout} className="text-ink-soft">
+            <LogOut size={20} strokeWidth={2} />
+          </button>
+        )}
       </header>
 
       <div className="flex flex-1 flex-col md:flex-row">
@@ -101,10 +123,13 @@ export function AdminLayout() {
         </main>
       </div>
 
-      {/* mobile bottom tab bar — hidden inside a patient's own pages */}
+      {/* mobile bottom tab bar — hidden inside a patient's own pages. Just
+          Patients/Treatments now — the "+" QuickAddMenu button (rendered
+          separately, positioned to line up here — see its own component)
+          sits visually between them. */}
       {!hideMobileNav && (
         <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-rule bg-white md:hidden">
-          {visibleNavItems.map(({ to, label, icon: Icon }) => (
+          {mobileNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
