@@ -6,6 +6,7 @@ import type {
   Consultation,
   DiscountInput,
   Invoice,
+  NextCall,
   PatientBillingSummary,
   PatientPayment,
   PaymentMode,
@@ -141,6 +142,11 @@ interface ClinicContextValue {
     entryId: string,
     input: { diagnosis?: string; notes: string; advice?: string },
   ) => Promise<PrescriptionEntry>
+
+  // Next calls — a per-patient history (see NextCall's own doc comment),
+  // any staff can add one or mark one done, not admin-only.
+  addNextCall: (patientId: string, input: { scheduledAt: string }) => Promise<NextCall>
+  completeNextCall: (nextCallId: string) => Promise<NextCall>
 
   addService: (
     input: { name: string; category?: string | null; serviceType: ServiceType; listedPrice: number; active: boolean },
@@ -373,6 +379,14 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  async function addNextCall(patientId: string, input: { scheduledAt: string }) {
+    return clinicalApi.addNextCall(patientId, { scheduled_at: input.scheduledAt })
+  }
+
+  async function completeNextCall(nextCallId: string) {
+    return clinicalApi.completeNextCall(nextCallId)
+  }
+
   async function addService(input: {
     name: string
     category?: string | null
@@ -432,6 +446,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         listInvoices,
         addPrescription,
         editPrescription,
+        addNextCall,
+        completeNextCall,
         addService,
         updateService,
         viewPrescriptionsPdf: clinicalApi.viewPrescriptionsPdf,

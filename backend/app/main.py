@@ -9,6 +9,7 @@ from app.routers import (
     consultations,
     documents,
     invoices,
+    next_calls,
     patients,
     prescriptions,
     services,
@@ -41,6 +42,7 @@ app.include_router(visits.router)
 app.include_router(invoices.router)
 app.include_router(billing.router)
 app.include_router(prescriptions.router)
+app.include_router(next_calls.router)
 app.include_router(documents.router)
 
 

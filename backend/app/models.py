@@ -70,6 +70,11 @@ class ServiceType(str, PyEnum):
     lab = "lab"
 
 
+class NextCallStatus(str, PyEnum):
+    upcoming = "upcoming"
+    done = "done"
+
+
 class Staff(Base):
     __tablename__ = "staff"
 
@@ -376,3 +381,28 @@ class InvoiceLine(Base):
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")
+
+
+class NextCall(Base):
+    """A patient-level "call/see them again on this date" record — the
+    Next Call tab's whole reason to exist. Deliberately a history, not a
+    single overwritten field on Patient: every entry ever added for a
+    patient is kept, each with its own status, so staff can see what was
+    previously scheduled as well as what's still upcoming. Not linked to
+    any specific consultation/treatment — it's about the patient, not a
+    particular visit."""
+
+    __tablename__ = "next_calls"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("patients.id"), nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[NextCallStatus] = mapped_column(
+        Enum(NextCallStatus, name="next_call_status"), default=NextCallStatus.upcoming, nullable=False
+    )
+    added_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("staff.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set the moment status flips to done — kept separate from created_at so
+    # "when was this scheduled" and "when was it actually completed" never
+    # get confused with each other.
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

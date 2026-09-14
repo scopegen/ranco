@@ -9,7 +9,7 @@ import { calculateAge } from '../../lib/age'
 import { findPatientByCode, formatPatientId } from '../../lib/patientId'
 import { formatDate } from '../../lib/date'
 import { Pill } from '../../components/Pill'
-import type { Consultation, Invoice, PatientBillingSummary, PrescriptionEntry, Treatment, Visit } from '../../types/clinical'
+import type { Consultation, Invoice, NextCall, PatientBillingSummary, PrescriptionEntry, Treatment, Visit } from '../../types/clinical'
 
 type BusyAction = 'view-history' | null
 
@@ -25,6 +25,9 @@ export interface PatientClinicalData {
   billingSummary: PatientBillingSummary | null
   invoices: Invoice[]
   prescriptions: PrescriptionEntry[]
+  // Every next-call entry ever added for this patient — a history, not just
+  // the current upcoming one. Any staff can see/use this, not admin-only.
+  nextCalls: NextCall[]
 }
 
 // Shared with every section page (Overview, Timeline, Consultations,
@@ -78,7 +81,7 @@ export function PatientDetail() {
     if (!patient) return
     const patientId = patient.id
     setLoading(true)
-    const [consultations, treatments, prescriptions, invoices, billingSummary] = await Promise.all([
+    const [consultations, treatments, prescriptions, invoices, billingSummary, nextCalls] = await Promise.all([
       clinicalApi.listConsultations(patientId),
       clinicalApi.listTreatments(patientId),
       clinicalApi.listPrescriptionsForPatient(patientId),
@@ -86,6 +89,7 @@ export function PatientDetail() {
       // Billing tab, so a 403 here would otherwise break page load.
       isAdmin ? clinicalApi.listInvoices(patientId) : Promise.resolve([]),
       isAdmin ? clinicalApi.getBillingSummary(patientId) : Promise.resolve(null),
+      clinicalApi.listNextCalls(patientId),
     ])
 
     const visitsByTreatment: Record<string, Visit[]> = {}
@@ -95,7 +99,7 @@ export function PatientDetail() {
       }),
     )
 
-    setData({ consultations, treatments, visitsByTreatment, billingSummary, invoices, prescriptions })
+    setData({ consultations, treatments, visitsByTreatment, billingSummary, invoices, prescriptions, nextCalls })
     setLoading(false)
   }, [patient, isAdmin])
 

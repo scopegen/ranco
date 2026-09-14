@@ -14,6 +14,7 @@ export function PatientOverview() {
     { id: 'timeline', label: 'Timeline' },
     ...(data.consultations.length > 0 ? [{ id: 'consultations', label: 'Consultations' }] : []),
     { id: 'treatments', label: 'Treatments' },
+    { id: 'next-call', label: 'Next Call' },
     ...(isAdmin ? [{ id: 'billing', label: 'Billing' }] : []),
   ]
 

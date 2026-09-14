@@ -11,7 +11,7 @@ import { PatientList } from './pages/admin/PatientList'
 import { NewPatient } from './pages/admin/NewPatient'
 import { PatientDetail } from './pages/admin/PatientDetail'
 import { PatientOverview } from './pages/admin/patient-detail/PatientOverview'
-import { TimelineSection, ConsultationsSection, TreatmentsSection, BillingSection } from './pages/admin/patient-detail/SectionPages'
+import { TimelineSection, ConsultationsSection, TreatmentsSection, NextCallSection, BillingSection } from './pages/admin/patient-detail/SectionPages'
 import { Services } from './pages/admin/Services'
 import { Doctors } from './pages/admin/Doctors'
 import { Settings } from './pages/admin/Settings'
@@ -45,6 +45,7 @@ function App() {
             <Route path="timeline" element={<TimelineSection />} />
             <Route path="consultations" element={<ConsultationsSection />} />
             <Route path="treatments" element={<TreatmentsSection />} />
+            <Route path="next-call" element={<NextCallSection />} />
             <Route path="billing" element={<BillingSection />} />
           </Route>
           <Route path="treatments" element={<TreatmentsOverview />} />

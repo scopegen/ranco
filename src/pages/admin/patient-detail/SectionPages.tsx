@@ -5,6 +5,7 @@ import type { PatientDetailContext } from '../PatientDetail'
 import { TimelineTab } from './TimelineTab'
 import { ConsultationsTab } from './ConsultationsTab'
 import { TreatmentsTab } from './TreatmentsTab'
+import { NextCallTab } from './NextCallTab'
 import { BillingTab, BillingHistoryModal } from './BillingTab'
 import { Button } from '../../../components/Button'
 
@@ -66,6 +67,15 @@ export function TreatmentsSection() {
           each visit) rather than as one combined document here — each
           visit's prescription is its own separate PDF. */}
       <TreatmentsTab patient={patient} data={data} onChange={refresh} />
+    </SectionShell>
+  )
+}
+
+export function NextCallSection() {
+  const { patient, data, refresh } = useOutletContext<PatientDetailContext>()
+  return (
+    <SectionShell title="Next Call">
+      <NextCallTab patient={patient} data={data} onChange={refresh} />
     </SectionShell>
   )
 }

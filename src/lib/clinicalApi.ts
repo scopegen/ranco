@@ -4,6 +4,8 @@ import type {
   BillingHistoryEvent,
   Consultation,
   Invoice,
+  NextCall,
+  NextCallStatus,
   PatientBillingSummary,
   PatientPayment,
   PaymentMode,
@@ -196,6 +198,16 @@ interface RawPrescriptionEntry {
   versions: RawPrescriptionVersion[]
 }
 
+interface RawNextCall {
+  id: string
+  patient_id: string
+  scheduled_at: string
+  status: NextCallStatus
+  added_by: string
+  created_at: string
+  completed_at: string | null
+}
+
 // ---- mappers ----
 
 const toStaff = (r: RawStaff): Staff => ({
@@ -350,6 +362,16 @@ const toPrescriptionEntry = (r: RawPrescriptionEntry): PrescriptionEntry => ({
     editedAt: v.edited_at,
     versionNumber: v.version_number,
   })),
+})
+
+const toNextCall = (r: RawNextCall): NextCall => ({
+  id: r.id,
+  patientId: r.patient_id,
+  scheduledAt: r.scheduled_at,
+  status: r.status,
+  addedBy: r.added_by,
+  createdAt: r.created_at,
+  completedAt: r.completed_at ?? undefined,
 })
 
 // ---- API calls ----
@@ -536,4 +558,13 @@ export const clinicalApi = {
   // buttons, as opposed to the combined every-entry document above.
   viewPrescriptionPdf: (entryId: string) => viewPdf(`/prescriptions/${entryId}/pdf`),
   savePrescriptionPdf: (entryId: string, filenameHint?: string) => savePdf(`/prescriptions/${entryId}/pdf`, filenameHint),
+
+  // next calls — a per-patient history, not a single overwritten field;
+  // see NextCall's own doc comment.
+  listNextCalls: (patientId: string) =>
+    api.get<RawNextCall[]>(`/patients/${patientId}/next-calls`).then((rs) => rs.map(toNextCall)),
+  addNextCall: (patientId: string, input: { scheduled_at: string }) =>
+    api.post<RawNextCall>(`/patients/${patientId}/next-calls`, input).then(toNextCall),
+  completeNextCall: (nextCallId: string) =>
+    api.patch<RawNextCall>(`/next-calls/${nextCallId}/complete`).then(toNextCall),
 }

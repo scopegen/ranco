@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Calendar, X } from 'lucide-react'
+import { Search, Calendar, PhoneCall, X } from 'lucide-react'
 import { Button } from '../../components/Button'
 import { usePatients } from '../../state/PatientsContext'
+import { clinicalApi } from '../../lib/clinicalApi'
 import { calculateAge } from '../../lib/age'
 import { formatPatientId } from '../../lib/patientId'
 import { formatDate } from '../../lib/date'
+
+// Same "due soon" window as the Dashboard's own stat tile — overdue counts
+// too, not just the next 7 days ahead.
+const DUE_SOON_WINDOW_DAYS = 7
 
 function toLocalISODate(date: Date): string {
   const year = date.getFullYear()
@@ -44,6 +49,31 @@ export function PatientList() {
   const [toDate, setToDate] = useState('')
   const [dateFilterOpen, setDateFilterOpen] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
+  const [dueSoonPatientIds, setDueSoonPatientIds] = useState<Set<string>>(new Set())
+
+  // No bulk "all next-calls" endpoint exists — fetch each patient's own
+  // history in parallel, same N+1 pattern the Dashboard/TreatmentsOverview
+  // already use, just to flag which patients have a call due soon.
+  useEffect(() => {
+    if (loading) return
+    let cancelled = false
+    const cutoff = new Date(Date.now() + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000).getTime()
+
+    Promise.all(
+      patients.map(async (patient) => {
+        const nextCalls = await clinicalApi.listNextCalls(patient.id)
+        const dueSoon = nextCalls.some((nc) => nc.status === 'upcoming' && new Date(nc.scheduledAt).getTime() <= cutoff)
+        return dueSoon ? patient.id : null
+      }),
+    ).then((ids) => {
+      if (cancelled) return
+      setDueSoonPatientIds(new Set(ids.filter((id): id is string => id !== null)))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [patients, loading])
 
   useEffect(() => {
     if (!dateFilterOpen) return
@@ -222,7 +252,7 @@ export function PatientList() {
             <table className="w-full text-left sm:min-w-[560px]">
               <thead>
                 <tr className="border-b border-rule">
-                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">Patient ID</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">Patient ID</th>
                   <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">Name</th>
                   <th className="hidden px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft sm:table-cell">Phone</th>
                   <th className="hidden px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft sm:table-cell">Age</th>
@@ -239,7 +269,11 @@ export function PatientList() {
                       onClick={() => navigate(overviewPath)}
                       className="cursor-pointer border-b border-rule transition-colors last:border-none hover:bg-accent-tint/40"
                     >
-                      <td className="px-4 py-3 font-mono text-[13px] text-ink-soft">{formatPatientId(patient.patientNumber)}</td>
+                      <td className="px-4 py-3 font-mono text-[13px] text-ink-soft">
+                        {/* Mobile only — just the number, no "RANCO-" prefix, to save width; desktop keeps the full ID. Display-only, the full formatPatientId is still what's used for the actual URL/search everywhere else. */}
+                        <span className="hidden sm:inline">{formatPatientId(patient.patientNumber)}</span>
+                        <span className="sm:hidden">{String(patient.patientNumber).padStart(4, '0')}</span>
+                      </td>
                       <td className="px-4 py-3">
                         <Link
                           to={overviewPath}
@@ -253,13 +287,22 @@ export function PatientList() {
                       <td className="hidden px-4 py-3 text-ink-soft sm:table-cell">{age === null ? '—' : `${age} yrs`}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
+                          {/* Same View button, same destination (the patient's
+                              overview) — when a call is due soon, it just
+                              turns red with a phone icon instead of adding a
+                              second button next to it. */}
                           <Link
                             to={overviewPath}
                             onClick={(e) => e.stopPropagation()}
-                            aria-label={`View ${patient.name}`}
-                            title="View"
-                            className="rounded-md border border-accent bg-accent-tint px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent hover:text-white"
+                            aria-label={dueSoonPatientIds.has(patient.id) ? `View ${patient.name} — call due soon` : `View ${patient.name}`}
+                            title={dueSoonPatientIds.has(patient.id) ? 'Call due soon' : 'View'}
+                            className={`flex w-16 items-center justify-center gap-1 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                              dueSoonPatientIds.has(patient.id)
+                                ? 'border-crit bg-crit-soft text-crit hover:bg-crit hover:text-white'
+                                : 'border-accent bg-accent-tint text-accent-deep hover:bg-accent hover:text-white'
+                            }`}
                           >
+                            {dueSoonPatientIds.has(patient.id) && <PhoneCall size={12} />}
                             View
                           </Link>
                         </div>

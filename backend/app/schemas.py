@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
-from app.models import Gender, PaymentMode, PaymentStatus, ServiceType, StaffRole, TreatmentStatus
+from app.models import Gender, NextCallStatus, PaymentMode, PaymentStatus, ServiceType, StaffRole, TreatmentStatus
 
 # ---- Staff / auth ----
 
@@ -444,3 +444,21 @@ class PrescriptionEntryOut(BaseModel):
     created_at: datetime
     last_edited_at: datetime | None
     versions: list[PrescriptionVersionOut] = []
+
+
+# ---- Next Call ----
+
+
+class NextCallCreate(BaseModel):
+    scheduled_at: datetime
+
+
+class NextCallOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    scheduled_at: datetime
+    status: NextCallStatus
+    added_by: uuid.UUID
+    created_at: datetime
+    completed_at: datetime | None

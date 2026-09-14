@@ -3,6 +3,7 @@ export type PaymentStatus = 'paid' | 'unpaid'
 export type StaffRole = 'admin' | 'doctor'
 export type TreatmentStatus = 'pending' | 'ongoing' | 'finished'
 export type ServiceType = 'dental' | 'lab'
+export type NextCallStatus = 'upcoming' | 'done'
 
 // Shared input shape for the "set discount"/"set price adjustment" calls —
 // see Treatment.priceAdjustmentType and Treatment.discountType for how the
@@ -200,4 +201,18 @@ export interface PrescriptionEntry {
   createdAt: string
   lastEditedAt?: string
   versions: PrescriptionVersion[]
+}
+
+// A patient-level "call/see them again on this date" record — a history,
+// not a single overwritten field, so every entry ever scheduled stays
+// visible alongside whatever's still upcoming. Not tied to any specific
+// consultation or treatment.
+export interface NextCall {
+  id: string
+  patientId: string
+  scheduledAt: string
+  status: NextCallStatus
+  addedBy: string
+  createdAt: string
+  completedAt?: string
 }

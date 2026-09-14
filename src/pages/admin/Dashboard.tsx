@@ -1,13 +1,13 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Cake, IndianRupee, Stethoscope, Users, Wallet, X } from 'lucide-react'
+import { Cake, IndianRupee, PhoneCall, Stethoscope, Users, Wallet, X } from 'lucide-react'
 import { usePatients } from '../../state/PatientsContext'
 import { useAuth } from '../../state/AuthContext'
 import { useClinic } from '../../state/ClinicContext'
 import { clinicalApi } from '../../lib/clinicalApi'
 import { formatPatientId } from '../../lib/patientId'
-import { formatDate } from '../../lib/date'
+import { formatDate, formatDateTime } from '../../lib/date'
 import { formatINR } from '../../lib/currency'
 import type { Consultation, Treatment } from '../../types/clinical'
 
@@ -37,7 +37,7 @@ interface ListItem {
   secondary: string
 }
 
-type StatKey = 'ongoing' | 'birthdays' | 'due' | 'paidToday'
+type StatKey = 'ongoing' | 'birthdays' | 'due' | 'paidToday' | 'dueSoonCalls'
 
 interface DashboardData {
   totalPatients: number
@@ -53,6 +53,9 @@ interface DashboardData {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const BIRTHDAY_WINDOW_DAYS = 30
+// "Due soon" for the Next Call stat — overdue (already past) counts too,
+// not just the next 7 days ahead; only the far future is excluded.
+const DUE_SOON_WINDOW_DAYS = 7
 
 /** Days until this patient's next birthday (month/day only, year ignored),
  * or null if there's no full DOB on file (birth-year-only patients can't be
@@ -133,6 +136,7 @@ const STAT_LIST_META: Record<StatKey, { title: string; empty: string }> = {
   birthdays: { title: 'Upcoming Birthdays', empty: 'No birthdays in the next 30 days.' },
   due: { title: 'Payment Dues', empty: 'No one has an outstanding balance.' },
   paidToday: { title: "Payments Today", empty: 'No payments recorded today.' },
+  dueSoonCalls: { title: 'Due Soon', empty: 'No next-call dates overdue or due in the next 7 days.' },
 }
 
 export function Dashboard() {
@@ -154,18 +158,20 @@ export function Dashboard() {
     // two calls entirely rather than eating a 403 on every patient.
     Promise.all(
       patients.map(async (patient) => {
-        const [consultations, treatments, billingSummary, payments] = await Promise.all([
+        const [consultations, treatments, billingSummary, payments, nextCalls] = await Promise.all([
           clinicalApi.listConsultations(patient.id),
           clinicalApi.listTreatments(patient.id),
           isAdmin ? clinicalApi.getBillingSummary(patient.id) : Promise.resolve(null),
           isAdmin ? clinicalApi.listPatientPayments(patient.id) : Promise.resolve([]),
+          clinicalApi.listNextCalls(patient.id),
         ])
-        return { patient, consultations, treatments, billingSummary, payments }
+        return { patient, consultations, treatments, billingSummary, payments, nextCalls }
       }),
     ).then((groups) => {
       if (cancelled) return
 
       const now = new Date()
+      const dueSoonCutoff = new Date(now.getTime() + DUE_SOON_WINDOW_DAYS * MS_PER_DAY)
 
       const countsByDate: Record<string, number> = {}
       const countsByService: Record<string, number> = {}
@@ -174,11 +180,16 @@ export function Dashboard() {
         birthdays: [],
         due: [],
         paidToday: [],
+        dueSoonCalls: [],
       }
       // Sorted separately below (most owed / most recent first) rather than
       // in patient-fetch order.
       const dueRows: { id: string; to: string; primary: string; outstanding: number }[] = []
       const paidTodayRows: { id: string; to: string; primary: string; amount: number; mode: string; paidAt: string }[] = []
+      // Overdue or due within DUE_SOON_WINDOW_DAYS, still upcoming (not yet
+      // marked done) — the structured replacement for the old free-text
+      // "Due for Re-call" card.
+      const dueSoonRows: { id: string; to: string; primary: string; scheduledAt: string }[] = []
 
       // The three business/billing pie charts — admin-only, same as the
       // Payment Dues / Payments Today cards.
@@ -187,8 +198,19 @@ export function Dashboard() {
       let paidSum = 0
       let outstandingSum = 0
 
-      for (const { patient, consultations, treatments, billingSummary, payments } of groups) {
+      for (const { patient, consultations, treatments, billingSummary, payments, nextCalls } of groups) {
         const code = formatPatientId(patient.patientNumber)
+
+        for (const nextCall of nextCalls) {
+          if (nextCall.status !== 'upcoming') continue
+          if (new Date(nextCall.scheduledAt).getTime() > dueSoonCutoff.getTime()) continue
+          dueSoonRows.push({
+            id: nextCall.id,
+            to: `/admin/patients/${code}/next-call`,
+            primary: patient.name,
+            scheduledAt: nextCall.scheduledAt,
+          })
+        }
 
         if (billingSummary) {
           paidSum += billingSummary.totalPaid
@@ -279,6 +301,17 @@ export function Dashboard() {
         secondary: `${formatINR(row.amount)} · ${row.mode.toUpperCase()}`,
       }))
 
+      dueSoonRows.sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)) // soonest/most overdue first
+      lists.dueSoonCalls = dueSoonRows.map((row) => {
+        const overdue = new Date(row.scheduledAt).getTime() < now.getTime()
+        return {
+          id: row.id,
+          to: row.to,
+          primary: row.primary,
+          secondary: `${formatDateTime(row.scheduledAt)}${overdue ? ' · Overdue' : ''}`,
+        }
+      })
+
       // Last 7 days (today included), oldest first — how many patients were
       // seen (had a consultation logged) each day.
       const patientsPerDay: DayCount[] = Array.from({ length: 7 }, (_, i) => {
@@ -365,6 +398,15 @@ export function Dashboard() {
               value={data!.lists.birthdays.length}
               label="Upcoming Birthdays"
               onClick={() => setOpenList('birthdays')}
+            />
+            {/* Not admin-only — the Next Call tab itself is open to every
+                staff, same as Timeline/Consultations/Treatments. */}
+            <PastelStat
+              colorIndex={2}
+              icon={PhoneCall}
+              value={data!.lists.dueSoonCalls.length}
+              label="Due Soon"
+              onClick={() => setOpenList('dueSoonCalls')}
             />
             {/* Billing is admin-only everywhere else in the app — same rule here. */}
             {isAdmin && (
