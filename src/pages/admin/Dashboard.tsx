@@ -78,26 +78,44 @@ function isSameLocalDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
+/** Price adjustment (increase-only, on the base amount) applied before
+ * discount — see app/billing_math.py on the backend for the canonical
+ * version. There's no decrease direction here; decreasing the price is
+ * what discount is for. */
+function applyPriceAdjustment(
+  baseAmount: number,
+  type: 'percent' | 'amount' | null | undefined,
+  value: number | null | undefined,
+): number {
+  if (!type || !value) return baseAmount
+  const amount = type === 'percent' ? baseAmount * (value / 100) : value
+  return baseAmount + amount
+}
+
 /** What this one treatment actually contributes to revenue — mirrors the
  * backend's own _treatment_charge (and BillingTab's copy of the same
- * math) so the pie charts below always agree with the Billing tab. */
+ * math) so the pie charts below always agree with the Billing tab: the
+ * price adjustment is applied first, then the discount on top of that
+ * already-adjusted price. */
 function treatmentCharge(t: Treatment): number {
+  const adjusted = applyPriceAdjustment(t.servicePrice, t.priceAdjustmentType, t.priceAdjustmentValue)
   let discount = 0
   if (t.discountType && t.discountValue) {
-    discount = t.discountType === 'percent' ? t.servicePrice * (t.discountValue / 100) : t.discountValue
-    discount = Math.min(discount, t.servicePrice)
+    discount = t.discountType === 'percent' ? adjusted * (t.discountValue / 100) : t.discountValue
+    discount = Math.min(discount, adjusted)
   }
-  return t.servicePrice - discount
+  return adjusted - discount
 }
 
 /** Same math, for a consultation's fee. */
 function consultationCharge(c: Consultation): number {
+  const adjusted = applyPriceAdjustment(c.fee, c.priceAdjustmentType, c.priceAdjustmentValue)
   let discount = 0
   if (c.discountType && c.discountValue) {
-    discount = c.discountType === 'percent' ? c.fee * (c.discountValue / 100) : c.discountValue
-    discount = Math.min(discount, c.fee)
+    discount = c.discountType === 'percent' ? adjusted * (c.discountValue / 100) : c.discountValue
+    discount = Math.min(discount, adjusted)
   }
-  return c.fee - discount
+  return adjusted - discount
 }
 
 // Dashboard-only palette — kept local to this file on purpose (see the

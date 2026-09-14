@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_staff, require_admin
+from app.billing_math import apply_discount, apply_price_adjustment
 from app.database import get_db
 from app.models import Consultation, Patient, Staff
 from app.schemas import ConsultationCreate, ConsultationDiscountUpdate, ConsultationOut
@@ -13,17 +14,18 @@ router = APIRouter(tags=["consultations"])
 
 
 def _consultation_charge(consultation: Consultation) -> tuple[float, float, float]:
-    """(fee, discount_amount, charge) — mirrors treatments._treatment_charge
-    exactly, same two discount types, same per-service billing concern."""
-    fee = float(consultation.fee)
-    discount_amount = 0.0
-    if consultation.discount_type and consultation.discount_value:
-        if consultation.discount_type == "percent":
-            discount_amount = fee * (float(consultation.discount_value) / 100)
-        else:
-            discount_amount = float(consultation.discount_value)
-        discount_amount = min(discount_amount, fee)
-    return fee, discount_amount, fee - discount_amount
+    """(adjusted_fee, discount_amount, charge) — mirrors
+    treatments._treatment_charge exactly: adjusted_fee applies this
+    consultation's own price_adjustment_* on top of the raw fee
+    (increase-only) and IS what invoices bill; discount_amount is computed
+    off that already-adjusted fee, not the raw one — see app.billing_math."""
+    adjusted_fee = apply_price_adjustment(
+        float(consultation.fee),
+        consultation.price_adjustment_type,
+        consultation.price_adjustment_value,
+    )
+    discount_amount = apply_discount(adjusted_fee, consultation.discount_type, consultation.discount_value)
+    return adjusted_fee, discount_amount, adjusted_fee - discount_amount
 
 
 @router.post("/patients/{patient_id}/consultations", response_model=ConsultationOut, status_code=status.HTTP_201_CREATED)
@@ -84,6 +86,8 @@ def update_consultation_discount(
     consultation = db.get(Consultation, consultation_id)
     if consultation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation not found")
+    consultation.price_adjustment_type = payload.price_adjustment_type
+    consultation.price_adjustment_value = payload.price_adjustment_value
     consultation.discount_type = payload.discount_type
     consultation.discount_value = payload.discount_value
     db.commit()

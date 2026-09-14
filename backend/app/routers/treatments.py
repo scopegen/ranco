@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_staff, require_admin
+from app.billing_math import apply_discount, apply_price_adjustment
 from app.database import get_db
 from app.models import (
     InvoiceLine,
@@ -31,21 +32,23 @@ router = APIRouter(tags=["treatments"])
 
 
 def _treatment_charge(treatment: Treatment) -> tuple[float, float, float]:
-    """(service_price, discount_amount, charge) — charge is what this one
+    """(adjusted_price, discount_amount, charge) — charge is what this one
     treatment contributes to the patient's combined bill. service_price is
     the snapshot taken when the treatment was added (see the model field),
-    never re-derived from the service catalog. Callers are responsible for
-    excluding pending treatments — this doesn't charge for anything, it just
-    computes what a treatment's row would cost if it did."""
-    service_price = float(treatment.service_price)
-    discount_amount = 0.0
-    if treatment.discount_type and treatment.discount_value:
-        if treatment.discount_type == "percent":
-            discount_amount = service_price * (float(treatment.discount_value) / 100)
-        else:
-            discount_amount = float(treatment.discount_value)
-        discount_amount = min(discount_amount, service_price)
-    return service_price, discount_amount, service_price - discount_amount
+    never re-derived from the service catalog; adjusted_price applies this
+    treatment's own price_adjustment_* on top of that snapshot (increase-only)
+    and IS what invoices bill. discount_amount is then computed off the
+    already-adjusted price, not the raw service_price — see app.billing_math
+    for the shared two-stage math. Callers are responsible for excluding
+    pending treatments — this doesn't charge for anything, it just computes
+    what a treatment's row would cost if it did."""
+    adjusted_price = apply_price_adjustment(
+        float(treatment.service_price),
+        treatment.price_adjustment_type,
+        treatment.price_adjustment_value,
+    )
+    discount_amount = apply_discount(adjusted_price, treatment.discount_type, treatment.discount_value)
+    return adjusted_price, discount_amount, adjusted_price - discount_amount
 
 
 @router.post("/patients/{patient_id}/treatments", response_model=TreatmentOut, status_code=status.HTTP_201_CREATED)
@@ -149,6 +152,8 @@ def update_treatment_discount(
     treatment = db.get(Treatment, treatment_id)
     if treatment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treatment not found")
+    treatment.price_adjustment_type = payload.price_adjustment_type
+    treatment.price_adjustment_value = payload.price_adjustment_value
     treatment.discount_type = payload.discount_type
     treatment.discount_value = payload.discount_value
     db.commit()

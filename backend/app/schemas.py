@@ -108,6 +108,33 @@ class ServiceOut(BaseModel):
     active: bool
 
 
+def _validate_adjustment_and_discount(
+    adjustment_type: Literal["percent", "amount"] | None,
+    adjustment_value: float | None,
+    discount_type: Literal["percent", "amount"] | None,
+    discount_value: float | None,
+) -> None:
+    """Shared by ConsultationDiscountUpdate and TreatmentDiscountUpdate — the
+    two stages have identical validation rules, just applied to different
+    base amounts (fee vs. service_price) down in each router. Price
+    adjustment is increase-only — there's no direction to validate; a
+    decrease belongs in discount below instead."""
+    if adjustment_type is not None and adjustment_value is None:
+        raise ValueError("price_adjustment_value is required when price_adjustment_type is set.")
+    if adjustment_value is not None:
+        if adjustment_value < 0:
+            raise ValueError("Price adjustment can't be negative — it only ever increases the price.")
+        if adjustment_type == "percent" and adjustment_value > 100:
+            raise ValueError("A percentage price adjustment can't exceed 100.")
+    if discount_type is not None and discount_value is None:
+        raise ValueError("discount_value is required when discount_type is set.")
+    if discount_value is not None:
+        if discount_value < 0:
+            raise ValueError("Discount can't be negative.")
+        if discount_type == "percent" and discount_value > 100:
+            raise ValueError("A percentage discount can't exceed 100.")
+
+
 # ---- Consultation ----
 
 
@@ -147,13 +174,31 @@ class ConsultationOut(BaseModel):
     recommended_service_ids: list[uuid.UUID]
     recommendation_note: str | None
     updated_at: datetime
+    price_adjustment_type: Literal["percent", "amount"] | None
+    price_adjustment_value: float | None
     discount_type: Literal["percent", "amount"] | None
     discount_value: float | None
 
 
 class ConsultationDiscountUpdate(BaseModel):
+    """Covers both stages: the price adjustment (increase-only, on the base
+    fee) and the discount (decrease-only, computed on the already-adjusted
+    fee) — see _consultation_charge for the exact order they're applied in."""
+
+    price_adjustment_type: Literal["percent", "amount"] | None = None
+    price_adjustment_value: float | None = None
     discount_type: Literal["percent", "amount"] | None = None
     discount_value: float | None = None
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ConsultationDiscountUpdate":
+        _validate_adjustment_and_discount(
+            self.price_adjustment_type,
+            self.price_adjustment_value,
+            self.discount_type,
+            self.discount_value,
+        )
+        return self
 
 
 # ---- Treatment ----
@@ -190,23 +235,31 @@ class TreatmentOut(BaseModel):
     # second lookup, and so it can never drift from what was actually billed
     # even if the service's catalog price changes later.
     service_price: float
+    price_adjustment_type: Literal["percent", "amount"] | None
+    price_adjustment_value: float | None
     discount_type: Literal["percent", "amount"] | None
     discount_value: float | None
 
 
 class TreatmentDiscountUpdate(BaseModel):
+    """Covers both stages: the price adjustment (increase-only, on the base
+    service_price) and the discount (decrease-only, computed on the
+    already-adjusted price) — see _treatment_charge for the exact order
+    they're applied in."""
+
+    price_adjustment_type: Literal["percent", "amount"] | None = None
+    price_adjustment_value: float | None = None
     discount_type: Literal["percent", "amount"] | None = None
     discount_value: float | None = None
 
     @model_validator(mode="after")
     def _validate_discount(self) -> "TreatmentDiscountUpdate":
-        if self.discount_type is not None and self.discount_value is None:
-            raise ValueError("discount_value is required when discount_type is set.")
-        if self.discount_value is not None:
-            if self.discount_value < 0:
-                raise ValueError("Discount can't be negative.")
-            if self.discount_type == "percent" and self.discount_value > 100:
-                raise ValueError("A percentage discount can't exceed 100.")
+        _validate_adjustment_and_discount(
+            self.price_adjustment_type,
+            self.price_adjustment_value,
+            self.discount_type,
+            self.discount_value,
+        )
         return self
 
 

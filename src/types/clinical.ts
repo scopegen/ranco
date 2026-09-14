@@ -4,6 +4,13 @@ export type StaffRole = 'admin' | 'doctor'
 export type TreatmentStatus = 'pending' | 'ongoing' | 'finished'
 export type ServiceType = 'dental' | 'lab'
 
+// Shared input shape for the "set discount"/"set price adjustment" calls —
+// see Treatment.priceAdjustmentType and Treatment.discountType for how the
+// two combine (adjustment first, then discount on the adjusted price).
+// Adjustment is increase-only — decreasing the price is what discount is for.
+export type PriceAdjustmentInput = { type: 'percent' | 'amount'; value: number } | null
+export type DiscountInput = { type: 'percent' | 'amount'; value: number } | null
+
 export const CONSULTATION_FEE = 500
 export const PAYMENT_MODES: PaymentMode[] = ['cash', 'card', 'upi']
 // Standard dosing-frequency shorthand — doesn't need to be exhaustive, a
@@ -52,8 +59,13 @@ export interface Consultation {
   recommendedServiceIds: string[]
   recommendationNote?: string
   updatedAt: string
+  // Corrects the base fee upward, before any discount below is applied —
+  // see Treatment.priceAdjustmentType for the full explanation.
+  priceAdjustmentType?: 'percent' | 'amount' | null
+  priceAdjustmentValue?: number | null
   // Same discount mechanism as Treatment.discountType/discountValue — a
   // per-service concern that only affects the patient's combined bill.
+  // Computed on the already-adjusted fee above, not the raw fee.
   discountType?: 'percent' | 'amount' | null
   discountValue?: number | null
 }
@@ -75,6 +87,15 @@ export interface Treatment {
   // combined bill is derived from this, never from the service's live
   // catalog price.
   servicePrice: number
+  // Corrects the base servicePrice for this one treatment upward — before
+  // any discount below is applied. Increase-only: decreasing the price is
+  // what discount is for. Unlike discount, this changes the actual agreed
+  // price and IS reflected on invoices/generated documents.
+  priceAdjustmentType?: 'percent' | 'amount' | null
+  priceAdjustmentValue?: number | null
+  // Computed off the already-adjusted price above, not the raw
+  // servicePrice — never shown on any generated document, a
+  // Billing-tab-only concern.
   discountType?: 'percent' | 'amount' | null
   discountValue?: number | null
 }

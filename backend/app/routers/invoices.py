@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_admin
+from app.billing_math import apply_price_adjustment
 from app.database import get_db
 from app.models import Consultation, Invoice, InvoiceLine, Staff, Treatment, TreatmentStatus
 from app.schemas import GenerateInvoiceRequest, InvoiceOut
@@ -21,10 +22,12 @@ def generate_invoice(
 ):
     """Covers one or more treatments and/or consultations picked together in
     the Billing tab — admin-only, matching every other billing endpoint.
-    Purely a document: it records the full listed price of each item (no
-    discount, since that's a Billing-tab concern) and has no effect on
-    payment status or treatment status — money is tracked separately via
-    PatientPayment."""
+    Purely a document: it records each item's adjusted price — the base
+    price/fee plus/minus that item's own price adjustment, same figure
+    _treatment_charge/_consultation_charge bill on the combined bill — but
+    never the discount on top of it, since that stays a Billing-tab concern.
+    Has no effect on payment status or treatment status — money is tracked
+    separately via PatientPayment."""
     treatments = db.scalars(select(Treatment).where(Treatment.id.in_(payload.treatment_ids))).all()
     found_treatment_ids = {t.id for t in treatments}
     if found_treatment_ids != set(payload.treatment_ids):
@@ -63,7 +66,15 @@ def generate_invoice(
                 status_code=status.HTTP_409_CONFLICT, detail="A selected consultation already has an invoice"
             )
 
-    listed_total = sum(float(t.service_price) for t in treatments) + sum(float(c.fee) for c in consultations)
+    treatment_amount = {
+        t.id: apply_price_adjustment(float(t.service_price), t.price_adjustment_type, t.price_adjustment_value)
+        for t in treatments
+    }
+    consultation_amount = {
+        c.id: apply_price_adjustment(float(c.fee), c.price_adjustment_type, c.price_adjustment_value)
+        for c in consultations
+    }
+    listed_total = sum(treatment_amount.values()) + sum(consultation_amount.values())
 
     invoice = Invoice(
         listed_total=listed_total,
@@ -78,9 +89,11 @@ def generate_invoice(
     db.flush()  # assign invoice.id before lines reference it
 
     for treatment in treatments:
-        db.add(InvoiceLine(invoice_id=invoice.id, treatment_id=treatment.id, amount=float(treatment.service_price)))
+        db.add(InvoiceLine(invoice_id=invoice.id, treatment_id=treatment.id, amount=treatment_amount[treatment.id]))
     for consultation in consultations:
-        db.add(InvoiceLine(invoice_id=invoice.id, consultation_id=consultation.id, amount=float(consultation.fee)))
+        db.add(
+            InvoiceLine(invoice_id=invoice.id, consultation_id=consultation.id, amount=consultation_amount[consultation.id])
+        )
 
     db.commit()
     db.refresh(invoice)

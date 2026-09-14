@@ -165,9 +165,18 @@ class Consultation(Base):
     recommended_service_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list, nullable=False)
     recommendation_note: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Corrects the base fee for this one consultation upward — before any
+    # discount is applied on top. Increase-only: decreasing the price is
+    # already covered by discount below, so there's no direction field here.
+    # Unlike discount, this changes the actual agreed price and IS reflected
+    # on invoices/generated documents; see _consultation_charge for the
+    # exact order (adjust, then discount).
+    price_adjustment_type: Mapped[str | None] = mapped_column(String(10))
+    price_adjustment_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
     # Same discount mechanism as Treatment.discount_type/discount_value below
     # — a per-service concern that only affects the patient's combined bill,
-    # never shown on any generated document.
+    # never shown on any generated document. Computed off the adjusted price
+    # above, not the raw fee.
     discount_type: Mapped[str | None] = mapped_column(String(10))
     discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
 
@@ -201,6 +210,17 @@ class Treatment(Base):
     # must keep billing at the price quoted when they were added; only new
     # treatments added after the change pick up the new catalog price.
     service_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # Corrects the base service_price for this one treatment upward — before
+    # any discount is applied on top. Increase-only: decreasing the price is
+    # already covered by discount below, so there's no direction field here.
+    # Unlike discount, this changes the actual agreed price and IS reflected
+    # on invoices/generated documents; see _treatment_charge for the exact
+    # order (adjust, then discount).
+    price_adjustment_type: Mapped[str | None] = mapped_column(String(10))
+    price_adjustment_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    # Computed off the adjusted price above, not the raw service_price —
+    # never shown on any generated document (invoice/history), a
+    # Billing-tab-only concern.
     discount_type: Mapped[str | None] = mapped_column(String(10))
     discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2))
 

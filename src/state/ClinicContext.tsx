@@ -4,12 +4,14 @@ import { useAuth } from './AuthContext'
 import type {
   BillingHistoryEvent,
   Consultation,
+  DiscountInput,
   Invoice,
   PatientBillingSummary,
   PatientPayment,
   PaymentMode,
   PaymentStatus,
   PrescriptionEntry,
+  PriceAdjustmentInput,
   RxItem,
   Service,
   ServiceType,
@@ -73,10 +75,13 @@ interface ClinicContextValue {
   ) => Promise<Consultation>
 
   // Same discount mechanism as a treatment's — set on the consultation
-  // itself, editable any time regardless of payment status.
+  // itself, editable any time regardless of payment status. adjustment is
+  // applied to the base fee first, then discount is computed on that
+  // adjusted fee — see Consultation.priceAdjustmentType.
   updateConsultationDiscount: (
     consultationId: string,
-    discount: { type: 'percent' | 'amount'; value: number } | null,
+    adjustment: PriceAdjustmentInput,
+    discount: DiscountInput,
   ) => Promise<Consultation>
 
   // Added straight from the Treatments tab — pending, no consultation, no
@@ -95,9 +100,12 @@ interface ClinicContextValue {
   deleteTreatment: (treatmentId: string) => Promise<void>
 
   // Discounts stay a per-service concern — set on the treatment itself.
+  // adjustment is applied to the base servicePrice first, then discount is
+  // computed on that adjusted price — see Treatment.priceAdjustmentType.
   updateTreatmentDiscount: (
     treatmentId: string,
-    discount: { type: 'percent' | 'amount'; value: number } | null,
+    adjustment: PriceAdjustmentInput,
+    discount: DiscountInput,
   ) => Promise<Treatment>
 
   // Billing — one combined bill per patient, not linked to any specific
@@ -256,9 +264,12 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
 
   async function updateConsultationDiscount(
     consultationId: string,
-    discount: { type: 'percent' | 'amount'; value: number } | null,
+    adjustment: PriceAdjustmentInput,
+    discount: DiscountInput,
   ) {
     return clinicalApi.updateConsultationDiscount(consultationId, {
+      price_adjustment_type: adjustment?.type ?? null,
+      price_adjustment_value: adjustment?.value ?? null,
       discount_type: discount?.type ?? null,
       discount_value: discount?.value ?? null,
     })
@@ -289,9 +300,12 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
 
   async function updateTreatmentDiscount(
     treatmentId: string,
-    discount: { type: 'percent' | 'amount'; value: number } | null,
+    adjustment: PriceAdjustmentInput,
+    discount: DiscountInput,
   ) {
     return clinicalApi.updateTreatmentDiscount(treatmentId, {
+      price_adjustment_type: adjustment?.type ?? null,
+      price_adjustment_value: adjustment?.value ?? null,
       discount_type: discount?.type ?? null,
       discount_value: discount?.value ?? null,
     })

@@ -28,3 +28,6 @@ dist-ssr
 /debug-*.mjs
 /downloaded-*.pdf
 /*.png
+
+# Local-only working notes — not meant to be pushed (see the file itself)
+/docs/changelog.md

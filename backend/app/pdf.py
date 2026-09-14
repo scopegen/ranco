@@ -77,39 +77,39 @@ BASE_CSS = f"""
     top: 26.8cm; left: 1.8cm; width: 17.4cm; height: 2.5cm;
   }}
 }}
-body {{ font-family: "Roboto", Helvetica, Arial, sans-serif; font-size: 10pt; color: {INK}; }}
+body {{ font-family: "Roboto", Helvetica, Arial, sans-serif; font-size: 12pt; color: {INK}; }}
 #header_content table {{ width: 100%; }}
 #header_content .brand-cell {{ vertical-align: middle; }}
-#header_content .brand-tagline {{ font-size: 9.5pt; font-weight: bold; color: {LETTERHEAD_TEAL}; margin: 3px 0 0; }}
+#header_content .brand-tagline {{ font-size: 11.5pt; font-weight: bold; color: {LETTERHEAD_TEAL}; margin: 3px 0 0; }}
 #header_content .doctor-cell {{ vertical-align: middle; text-align: right; }}
-#header_content .doctor-name {{ font-size: 15pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0; }}
-#header_content .doctor-specialty {{ font-size: 9pt; color: {INK_SOFT}; margin: 2px 0 0; }}
-#header_content .doctor-reg {{ font-size: 8.5pt; font-weight: bold; color: {INK}; margin: 2px 0 0; }}
+#header_content .doctor-name {{ font-size: 17pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0; }}
+#header_content .doctor-specialty {{ font-size: 11pt; color: {INK_SOFT}; margin: 2px 0 0; }}
+#header_content .doctor-reg {{ font-size: 10.5pt; font-weight: bold; color: {INK}; margin: 2px 0 0; }}
 #header_content .letterhead-rule {{ border-bottom: 2px solid {LETTERHEAD_BLUE}; margin: 8px 0 0; }}
 /* Invoice-only header — "Invoice" wordmark on the left, logo + date +
    invoice number on the right (see _invoice_page_template_html). */
 #header_content .invoice-title-cell {{ vertical-align: middle; }}
-#header_content .invoice-title {{ font-size: 28pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0; }}
+#header_content .invoice-title {{ font-size: 30pt; font-weight: bold; color: {INK}; margin: 0; }}
 #header_content .invoice-meta-cell {{ vertical-align: top; text-align: right; }}
-#header_content .invoice-meta {{ font-size: 9.5pt; color: {INK_SOFT}; margin: 6px 0 0; }}
+#header_content .invoice-meta {{ font-size: 11.5pt; color: {INK_SOFT}; margin: 6px 0 0; }}
 #header_content .invoice-meta-strong {{ font-weight: bold; color: {INK}; }}
-#footer_content .footer-note {{ font-size: 8pt; color: {INK_SOFT}; font-style: italic; text-align: center; margin: 0 0 6px; }}
+#footer_content .footer-note {{ font-size: 10pt; color: {INK_SOFT}; font-style: italic; text-align: center; margin: 0 0 6px; }}
 #footer_content hr.contact-footer-rule {{ border: none; border-top: 2px solid {LETTERHEAD_BLUE}; margin: 0 0 8px; height: 0; }}
 #footer_content table {{ width: 100%; }}
-#footer_content td {{ font-size: 8.5pt; color: {INK_SOFT}; text-align: center; vertical-align: middle; padding: 0 4px; }}
+#footer_content td {{ font-size: 10.5pt; color: {INK_SOFT}; text-align: center; vertical-align: middle; padding: 0 4px; }}
 #footer_content td b {{ color: {INK}; }}
-.doc-title {{ font-size: 14pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 12px; }}
-.billed-to-label {{ font-size: 9pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; color: {INK_SOFT}; margin: 0 0 8px; }}
-.disclaimer {{ font-size: 8pt; color: {INK_SOFT}; padding-top: 6px; margin-top: 24px; font-style: italic; text-align: center; }}
+.doc-title {{ font-size: 16pt; font-weight: bold; color: {INK}; margin: 0 0 12px; }}
+.billed-to-label {{ font-size: 11pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; color: {INK_SOFT}; margin: 0 0 8px; }}
+.disclaimer {{ font-size: 10pt; color: {INK_SOFT}; padding-top: 6px; margin-top: 24px; font-style: italic; text-align: center; }}
 hr.section-divider {{ border: none; border-top: 1px solid {RULE}; margin: 6px 0 12px; height: 0; }}
 table.info {{ width: 100%; margin-bottom: 12px; }}
-table.info td {{ padding: 2px 0; font-size: 9.5pt; vertical-align: top; }}
+table.info td {{ padding: 2px 0; font-size: 11.5pt; vertical-align: top; }}
 .label {{ font-weight: bold; color: {INK_SOFT}; }}
 /* One field per row, label/colon/value each their own column — the label
    column is a fixed width so the colons line up regardless of how long
    each label is ("Patient" vs "Patient ID" vs "Gender" ...). */
 table.field-table {{ width: 100%; margin-bottom: 12px; border-collapse: collapse; }}
-table.field-table td {{ padding: 3px 0; font-size: 9.5pt; vertical-align: top; }}
+table.field-table td {{ padding: 3px 0; font-size: 11.5pt; vertical-align: top; }}
 table.field-table .field-label {{ width: 85pt; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
 table.field-table .field-colon {{ width: 10pt; color: {INK_SOFT}; }}
 table.field-table .field-value {{ color: {INK}; }}
@@ -117,7 +117,7 @@ table.field-table .field-value {{ color: {INK}; }}
    value, twice, each pair sized so both sides' colons line up in their own
    column, independent of the other side's label lengths. */
 table.field-table-2col {{ width: 100%; margin-bottom: 12px; border-collapse: collapse; }}
-table.field-table-2col td {{ padding: 3px 0; font-size: 9.5pt; vertical-align: top; }}
+table.field-table-2col td {{ padding: 3px 0; font-size: 11.5pt; vertical-align: top; }}
 table.field-table-2col .field-label {{ width: 20%; font-weight: bold; color: {INK_SOFT}; white-space: nowrap; }}
 table.field-table-2col .field-colon {{ width: 3%; color: {INK_SOFT}; }}
 table.field-table-2col .field-value {{ width: 27%; color: {INK}; }}
@@ -128,23 +128,23 @@ table.field-table-2col .field-value {{ width: 27%; color: {INK}; }}
    text-align:right-on-a-block technique already proven to work for
    .doctor-cell/.invoice-meta-cell above. */
 .date-stamp {{ text-align: right; margin-bottom: 12px; }}
-.date-stamp p {{ margin: 0 0 2px; font-size: 8pt; }}
+.date-stamp p {{ margin: 0 0 2px; font-size: 10pt; }}
 .date-stamp p:last-child {{ margin-bottom: 0; }}
 .entry {{ margin-bottom: 16px; padding: 10px 0 14px; border-bottom: 1px solid {RULE}; }}
 .entry-page {{ margin-top: 6px; }}
-.rx-date {{ font-size: 12pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 0 0 10px; }}
-.entry-head {{ font-size: 9.5pt; color: {INK_SOFT}; margin-bottom: 6px; }}
+.rx-date {{ font-size: 14pt; font-weight: bold; color: {INK}; margin: 0 0 10px; }}
+.entry-head {{ font-size: 11.5pt; color: {INK_SOFT}; margin-bottom: 6px; }}
 .entry-head b {{ color: {INK}; }}
-.rx-title {{ font-size: 13pt; font-style: italic; font-weight: bold; color: {ACCENT}; margin: 6px 0 4px; }}
-.rx-line {{ padding: 2px 0 2px 14px; font-size: 9.5pt; }}
-.section-title {{ font-size: 13pt; font-weight: bold; color: {ACCENT_DEEP}; margin: 18px 0 8px; border-bottom: 1px solid {RULE}; padding-bottom: 4px; }}
+.rx-title {{ font-size: 15pt; font-style: italic; font-weight: bold; color: {ACCENT}; margin: 6px 0 4px; }}
+.rx-line {{ padding: 2px 0 2px 14px; font-size: 11.5pt; }}
+.section-title {{ font-size: 15pt; font-weight: bold; color: {INK}; margin: 18px 0 8px; border-bottom: 1px solid {RULE}; padding-bottom: 4px; }}
 table.rows {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
-table.rows th {{ text-align: left; font-size: 8pt; text-transform: uppercase; color: {INK_SOFT}; border-bottom: 1px solid {RULE}; padding: 4px 6px; }}
-table.rows td {{ font-size: 9.5pt; border-bottom: 1px solid {RULE}; padding: 5px 6px; }}
-.pill {{ font-size: 8pt; padding: 2px 7px; border-radius: 8px; }}
+table.rows th {{ text-align: left; font-size: 10pt; text-transform: uppercase; color: {INK_SOFT}; border-bottom: 1px solid {RULE}; padding: 4px 6px; }}
+table.rows td {{ font-size: 11.5pt; border-bottom: 1px solid {RULE}; padding: 5px 6px; }}
+.pill {{ font-size: 10pt; padding: 2px 7px; border-radius: 8px; }}
 .pill-paid {{ background: #e5f5ec; color: #2f8f5b; }}
 .pill-unpaid {{ background: #f3f6fa; color: {INK_SOFT}; }}
-.summary td {{ font-size: 10pt; padding: 4px 10px 4px 0; }}
+.summary td {{ font-size: 12pt; padding: 4px 10px 4px 0; }}
 .summary .amt {{ font-weight: bold; }}
 """
 
@@ -561,7 +561,7 @@ def render_history_pdf(
         if invoice_line:
             invoice, line_amount = invoice_line
             c_invoice_note = (
-                f'<br/><span style="font-size:8pt; color:{INK_SOFT};">Invoice: Rs. {line_amount:,.0f} '
+                f'<br/><span style="font-size:10pt; color:{INK_SOFT};">Invoice: Rs. {line_amount:,.0f} '
                 f'settled via {invoice.payment_mode.value.upper()} on {invoice.issued_at.strftime("%d %b %Y")}</span>'
             )
 
@@ -594,7 +594,7 @@ def render_history_pdf(
         _service_price, discount_amount, charge = treatment_charge_by_id.get(t.id, (0.0, 0.0, 0.0))
         discount_note = f" (after Rs. {discount_amount:,.0f} discount)" if discount_amount else ""
         billing_html = (
-            f'<p style="font-size:9.5pt;"><span class="label">Charge:</span> '
+            f'<p style="font-size:11.5pt;"><span class="label">Charge:</span> '
             f"Rs. {charge:,.0f}{discount_note}</p>"
         )
 
@@ -603,15 +603,15 @@ def render_history_pdf(
         if invoice_line:
             invoice, line_amount = invoice_line
             invoice_html = (
-                f'<p style="font-size:9.5pt;"><span class="label">Invoice:</span> '
+                f'<p style="font-size:11.5pt;"><span class="label">Invoice:</span> '
                 f"Rs. {line_amount:,.0f} settled via {invoice.payment_mode.value.upper()} "
                 f'on {invoice.issued_at.strftime("%d %b %Y")}</p>'
             )
 
         treatment_blocks.append(f"""
         <div style="margin-bottom:14px;">
-          <p style="font-size:11pt; font-weight:bold; margin:0 0 2px;">{_esc(service_name(t.service_id))}
-            <span style="font-weight:normal; font-size:9pt; color:{INK_SOFT};"> &mdash; {_esc(doctor_name(t.doctor_id))} &middot; {t.status.value} &middot; started {t.started_at.strftime('%d %b %Y')}{f" &middot; finished {t.completed_at.strftime('%d %b %Y')}" if t.completed_at else ""}</span>
+          <p style="font-size:13pt; font-weight:bold; margin:0 0 2px;">{_esc(service_name(t.service_id))}
+            <span style="font-weight:normal; font-size:11pt; color:{INK_SOFT};"> &mdash; {_esc(doctor_name(t.doctor_id))} &middot; {t.status.value} &middot; started {t.started_at.strftime('%d %b %Y')}{f" &middot; finished {t.completed_at.strftime('%d %b %Y')}" if t.completed_at else ""}</span>
           </p>
           <table class="rows">
             <tr><th>Visit date</th></tr>
@@ -659,7 +659,7 @@ def render_history_pdf(
       {_page_template_html()}
       {_doc_title_html("Complete Patient History")}
       {_patient_info_html(patient)}
-      <p style="font-size:9pt; color:{INK_SOFT};">Registered: {patient.registered_at.strftime('%d %b %Y')}</p>
+      <p style="font-size:11pt; color:{INK_SOFT};">Registered: {patient.registered_at.strftime('%d %b %Y')}</p>
       {consult_section}
       {treatments_section}
       {billing_section}
@@ -701,7 +701,7 @@ def render_invoice_pdf(patient, lines: list[dict], invoice) -> bytes:
 
       <table class="summary" style="margin-top:8px;">
         <tr><td class="label">Subtotal</td><td class="amt">Rs. {subtotal:,.0f}</td></tr>
-        <tr><td class="label" style="font-size:11pt;">Total</td><td class="amt" style="font-size:11pt;">Rs. {float(invoice.final_total):,.0f}</td></tr>
+        <tr><td class="label" style="font-size:13pt;">Total</td><td class="amt" style="font-size:13pt;">Rs. {float(invoice.final_total):,.0f}</td></tr>
       </table>
     </body></html>
     """

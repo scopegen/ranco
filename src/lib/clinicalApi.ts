@@ -78,6 +78,8 @@ interface RawConsultation {
   recommended_service_ids: string[]
   recommendation_note: string | null
   updated_at: string
+  price_adjustment_type: 'percent' | 'amount' | null
+  price_adjustment_value: number | null
   discount_type: 'percent' | 'amount' | null
   discount_value: number | null
 }
@@ -92,6 +94,18 @@ interface RawTreatment {
   started_at: string | null
   completed_at: string | null
   service_price: number
+  price_adjustment_type: 'percent' | 'amount' | null
+  price_adjustment_value: number | null
+  discount_type: 'percent' | 'amount' | null
+  discount_value: number | null
+}
+
+// Shared by updateConsultationDiscount/updateTreatmentDiscount — both stages
+// of the charge calc (adjustment then discount) are set together. Adjustment
+// is increase-only — no direction field.
+interface DiscountUpdateInput {
+  price_adjustment_type: 'percent' | 'amount' | null
+  price_adjustment_value: number | null
   discount_type: 'percent' | 'amount' | null
   discount_value: number | null
 }
@@ -236,6 +250,8 @@ const toConsultation = (r: RawConsultation): Consultation => ({
   recommendedServiceIds: r.recommended_service_ids,
   recommendationNote: r.recommendation_note ?? undefined,
   updatedAt: r.updated_at,
+  priceAdjustmentType: r.price_adjustment_type,
+  priceAdjustmentValue: r.price_adjustment_value,
   discountType: r.discount_type,
   discountValue: r.discount_value,
 })
@@ -250,6 +266,8 @@ const toTreatment = (r: RawTreatment): Treatment => ({
   startedAt: r.started_at,
   completedAt: r.completed_at ?? undefined,
   servicePrice: r.service_price,
+  priceAdjustmentType: r.price_adjustment_type,
+  priceAdjustmentValue: r.price_adjustment_value,
   discountType: r.discount_type,
   discountValue: r.discount_value,
 })
@@ -435,10 +453,8 @@ export const clinicalApi = {
       .then(toConsultation),
   // Discounts stay a per-service concern even though payment is tracked on
   // the patient's combined bill — same mechanism as a treatment's discount.
-  updateConsultationDiscount: (
-    consultationId: string,
-    input: { discount_type: 'percent' | 'amount' | null; discount_value: number | null },
-  ) => api.patch<RawConsultation>(`/consultations/${consultationId}/discount`, input).then(toConsultation),
+  updateConsultationDiscount: (consultationId: string, input: DiscountUpdateInput) =>
+    api.patch<RawConsultation>(`/consultations/${consultationId}/discount`, input).then(toConsultation),
 
   // treatments
   listTreatments: (patientId: string) =>
@@ -454,10 +470,8 @@ export const clinicalApi = {
     api.post<RawTreatmentHandoff>(`/treatments/${treatmentId}/handoff`, input).then(toHandoff),
   // Discounts stay a per-service concern even though payment is now
   // tracked on the patient's combined bill, not per-treatment.
-  updateTreatmentDiscount: (
-    treatmentId: string,
-    input: { discount_type: 'percent' | 'amount' | null; discount_value: number | null },
-  ) => api.patch<RawTreatment>(`/treatments/${treatmentId}/discount`, input).then(toTreatment),
+  updateTreatmentDiscount: (treatmentId: string, input: DiscountUpdateInput) =>
+    api.patch<RawTreatment>(`/treatments/${treatmentId}/discount`, input).then(toTreatment),
   // One click, ends today — no request body, no confirmation form.
   endTreatment: (treatmentId: string) => api.post<RawTreatment>(`/treatments/${treatmentId}/end`).then(toTreatment),
   // Only succeeds server-side while the treatment has no visits logged yet —

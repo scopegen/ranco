@@ -10,9 +10,25 @@ import type { Patient } from '../../../state/PatientsContext'
 import type { BillingHistoryEvent, Consultation, Invoice, PaymentMode, Treatment } from '../../../types/clinical'
 import type { PatientClinicalData } from '../PatientDetail'
 
-/** Shared discount math — a percent or a flat amount off some base, capped
- * so it can never take the charge below zero. Used both for what's actually
- * saved and for the discount form's live preview, so the two never disagree. */
+/** Stage 1 — corrects the base amount UPWARD before any discount is applied
+ * on top. Increase-only: decreasing the price is what discount (stage 2) is
+ * for, so there's no direction here. Mirrors the backend's
+ * app.billing_math.apply_price_adjustment exactly. */
+function applyPriceAdjustment(
+  baseAmount: number,
+  type: 'percent' | 'amount' | null | undefined,
+  value: number | null | undefined,
+): number {
+  if (!type || !value) return baseAmount
+  const amount = type === 'percent' ? baseAmount * (value / 100) : value
+  return baseAmount + amount
+}
+
+/** Stage 2 — a percent or a flat amount off some base, capped so it can
+ * never take the charge below zero. Used both for what's actually saved and
+ * for the pricing form's live preview, so the two never disagree. Always
+ * called with the STAGE-1-ADJUSTED price as `baseAmount`, never the raw
+ * service price/fee. */
 function applyDiscount(
   baseAmount: number,
   type: 'percent' | 'amount' | null | undefined,
@@ -26,23 +42,29 @@ function applyDiscount(
   return { discountAmount, charge: baseAmount - discountAmount }
 }
 
-/** (servicePrice, discountAmount, charge) for one treatment — mirrors the
- * backend's own `_treatment_charge` exactly, so what's shown here always
- * matches what the Billing summary and invoices actually total. Uses the
- * price snapshot on the treatment itself, never the service's live catalog
- * price. */
-function treatmentCharge(t: Treatment): { servicePrice: number; discountAmount: number; charge: number } {
+/** (servicePrice, adjustedPrice, discountAmount, charge) for one treatment —
+ * mirrors the backend's own `_treatment_charge` exactly (adjust, then
+ * discount on the adjusted price), so what's shown here always matches what
+ * the Billing summary and invoices actually total. Uses the price snapshot
+ * on the treatment itself, never the service's live catalog price. */
+function treatmentCharge(
+  t: Treatment,
+): { servicePrice: number; adjustedPrice: number; discountAmount: number; charge: number } {
   const servicePrice = t.servicePrice
-  const { discountAmount, charge } = applyDiscount(servicePrice, t.discountType, t.discountValue)
-  return { servicePrice, discountAmount, charge }
+  const adjustedPrice = applyPriceAdjustment(servicePrice, t.priceAdjustmentType, t.priceAdjustmentValue)
+  const { discountAmount, charge } = applyDiscount(adjustedPrice, t.discountType, t.discountValue)
+  return { servicePrice, adjustedPrice, discountAmount, charge }
 }
 
-/** Same math, for a consultation's fee — same two discount types, same
- * per-service billing concern, just a different base amount. */
-function consultationCharge(c: Consultation): { fee: number; discountAmount: number; charge: number } {
+/** Same math, for a consultation's fee — same adjustment + discount stages,
+ * same per-service billing concern, just a different base amount. */
+function consultationCharge(
+  c: Consultation,
+): { fee: number; adjustedFee: number; discountAmount: number; charge: number } {
   const fee = c.fee
-  const { discountAmount, charge } = applyDiscount(fee, c.discountType, c.discountValue)
-  return { fee, discountAmount, charge }
+  const adjustedFee = applyPriceAdjustment(fee, c.priceAdjustmentType, c.priceAdjustmentValue)
+  const { discountAmount, charge } = applyDiscount(adjustedFee, c.discountType, c.discountValue)
+  return { fee, adjustedFee, discountAmount, charge }
 }
 
 /** "INV-0016" — the invoice's human-readable sequential number, matching
@@ -56,6 +78,14 @@ function invoiceNumberStr(invoiceNumber: number): string {
 function discountLabel(type: 'percent' | 'amount' | null | undefined, value: number | null | undefined): string | undefined {
   if (!type || !value) return undefined
   return type === 'percent' ? `${value}% off` : `${formatINR(value)} off`
+}
+
+/** "+10%" / "+₹100" for the collapsed card header — undefined when there's
+ * no price adjustment, so the caller can skip rendering the badge. Always a
+ * "+" since price adjustment only ever increases the price. */
+function adjustmentLabel(type: 'percent' | 'amount' | null | undefined, value: number | null | undefined): string | undefined {
+  if (!type || !value) return undefined
+  return type === 'percent' ? `+${value}%` : `+${formatINR(value)}`
 }
 
 // This tab is admin-only (gated in the section page) — doctors never reach
@@ -660,6 +690,7 @@ function CardHeader({
   label,
   date,
   charge,
+  adjustmentLabel,
   discountLabel,
   expanded,
   onToggle,
@@ -669,6 +700,8 @@ function CardHeader({
   // The service/consultation charge — shown right beside the name so it's
   // visible without expanding the card.
   charge: number
+  // e.g. "+10%" / "−₹100" — omitted entirely when there's no price adjustment.
+  adjustmentLabel?: string
   // e.g. "10% off" / "₹100 off" — omitted entirely when there's no discount.
   discountLabel?: string
   expanded: boolean
@@ -683,6 +716,7 @@ function CardHeader({
         <span className="text-[12px] text-ink-faint">{formatDate(date)}</span>
       </div>
       <div className="flex items-center gap-3">
+        {adjustmentLabel && <Pill variant="warning">{adjustmentLabel}</Pill>}
         {discountLabel && <Pill variant="accent">{discountLabel}</Pill>}
         <button
           type="button"
@@ -700,8 +734,9 @@ function CardHeader({
   )
 }
 
-// Discount editing only — consultations are billed automatically the moment
-// they're created, and payment now happens only through the combined Add
+// Price adjustment + discount editing only — consultations are billed
+// automatically the moment they're created, and payment now happens only
+// through the combined Add
 // Payment action above, never per-consultation.
 function ConsultationBillingCard({
   consultation,
@@ -716,21 +751,35 @@ function ConsultationBillingCard({
 }) {
   const { updateConsultationDiscount } = useClinic()
   const [expanded, setExpanded] = useState(false)
-  const [discountFormOpen, setDiscountFormOpen] = useState(false)
+  const [pricingFormOpen, setPricingFormOpen] = useState(false)
+  const [adjustmentType, setAdjustmentType] = useState<'none' | 'percent' | 'amount'>(consultation.priceAdjustmentType ?? 'none')
+  const [adjustmentValue, setAdjustmentValue] = useState(
+    consultation.priceAdjustmentValue != null ? String(consultation.priceAdjustmentValue) : '',
+  )
   const [discountType, setDiscountType] = useState<'none' | 'percent' | 'amount'>(consultation.discountType ?? 'none')
   const [discountValue, setDiscountValue] = useState(consultation.discountValue != null ? String(consultation.discountValue) : '')
-  const { fee, discountAmount: savedDiscountAmount, charge: savedCharge } = consultationCharge(consultation)
+  const {
+    fee,
+    adjustedFee: savedAdjustedFee,
+    discountAmount: savedDiscountAmount,
+    charge: savedCharge,
+  } = consultationCharge(consultation)
 
-  // While the discount form is open, the table below shows a live preview of
+  // While the pricing form is open, the table below shows a live preview of
   // what Save will produce; closed, it falls back to the last-saved figures.
-  const { discountAmount, charge } = discountFormOpen
-    ? applyDiscount(fee, discountType === 'none' ? null : discountType, Number(discountValue) || null)
+  const adjustedFee = pricingFormOpen
+    ? applyPriceAdjustment(fee, adjustmentType === 'none' ? null : adjustmentType, Number(adjustmentValue) || null)
+    : savedAdjustedFee
+  const { discountAmount, charge } = pricingFormOpen
+    ? applyDiscount(adjustedFee, discountType === 'none' ? null : discountType, Number(discountValue) || null)
     : { discountAmount: savedDiscountAmount, charge: savedCharge }
 
-  function openDiscountForm() {
+  function openPricingForm() {
+    setAdjustmentType(consultation.priceAdjustmentType ?? 'none')
+    setAdjustmentValue(consultation.priceAdjustmentValue != null ? String(consultation.priceAdjustmentValue) : '')
     setDiscountType(consultation.discountType ?? 'none')
     setDiscountValue(consultation.discountValue != null ? String(consultation.discountValue) : '')
-    setDiscountFormOpen(true)
+    setPricingFormOpen(true)
   }
 
   return (
@@ -739,6 +788,7 @@ function ConsultationBillingCard({
         label="Consultation"
         date={consultation.consultDate}
         charge={savedCharge}
+        adjustmentLabel={adjustmentLabel(consultation.priceAdjustmentType, consultation.priceAdjustmentValue)}
         discountLabel={discountLabel(consultation.discountType, consultation.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
@@ -754,6 +804,15 @@ function ConsultationBillingCard({
                 <td className="pr-6 text-ink-soft">Fee</td>
                 <td className="text-right font-medium text-ink">{formatINR(fee)}</td>
               </tr>
+              {adjustedFee !== fee && (
+                <tr>
+                  <td className="pr-6 text-ink-soft">Price adjustment</td>
+                  <td className={`text-right font-medium ${adjustedFee > fee ? 'text-ink' : 'text-crit'}`}>
+                    {adjustedFee > fee ? '+' : '−'}
+                    {formatINR(Math.abs(adjustedFee - fee))}
+                  </td>
+                </tr>
+              )}
               {discountAmount > 0 && (
                 <tr>
                   <td className="pr-6 text-ink-soft">Discount</td>
@@ -767,22 +826,26 @@ function ConsultationBillingCard({
             </tbody>
           </table>
 
-          {discountFormOpen ? (
-            <DiscountForm
-              type={discountType}
-              value={discountValue}
-              onTypeChange={setDiscountType}
-              onValueChange={setDiscountValue}
-              onSave={async (discount) => {
-                await updateConsultationDiscount(consultation.id, discount)
-                setDiscountFormOpen(false)
+          {pricingFormOpen ? (
+            <PricingForm
+              adjustmentType={adjustmentType}
+              adjustmentValue={adjustmentValue}
+              onAdjustmentTypeChange={setAdjustmentType}
+              onAdjustmentValueChange={setAdjustmentValue}
+              discountType={discountType}
+              discountValue={discountValue}
+              onDiscountTypeChange={setDiscountType}
+              onDiscountValueChange={setDiscountValue}
+              onSave={async (adjustment, discount) => {
+                await updateConsultationDiscount(consultation.id, adjustment, discount)
+                setPricingFormOpen(false)
                 onChange()
               }}
-              onCancel={() => setDiscountFormOpen(false)}
+              onCancel={() => setPricingFormOpen(false)}
             />
           ) : (
-            <Button variant="secondary" onClick={openDiscountForm}>
-              {consultation.discountType ? 'Edit discount' : '+ Add discount'}
+            <Button variant="secondary" onClick={openPricingForm}>
+              {consultation.priceAdjustmentType || consultation.discountType ? 'Edit pricing' : '+ Adjust price / discount'}
             </Button>
           )}
 
@@ -797,8 +860,8 @@ function ConsultationBillingCard({
   )
 }
 
-// Discount editing only — payment against a treatment's charge happens
-// through the combined Add Payment action above, not here.
+// Price adjustment + discount editing only — payment against a treatment's
+// charge happens through the combined Add Payment action above, not here.
 function TreatmentBillingCard({
   treatment,
   invoice,
@@ -812,23 +875,37 @@ function TreatmentBillingCard({
 }) {
   const { updateTreatmentDiscount } = useClinic()
   const [expanded, setExpanded] = useState(false)
-  const [discountFormOpen, setDiscountFormOpen] = useState(false)
+  const [pricingFormOpen, setPricingFormOpen] = useState(false)
+  const [adjustmentType, setAdjustmentType] = useState<'none' | 'percent' | 'amount'>(treatment.priceAdjustmentType ?? 'none')
+  const [adjustmentValue, setAdjustmentValue] = useState(
+    treatment.priceAdjustmentValue != null ? String(treatment.priceAdjustmentValue) : '',
+  )
   const [discountType, setDiscountType] = useState<'none' | 'percent' | 'amount'>(treatment.discountType ?? 'none')
   const [discountValue, setDiscountValue] = useState(treatment.discountValue != null ? String(treatment.discountValue) : '')
 
   const serviceLabel = serviceName(treatment.serviceId)
-  const { servicePrice, discountAmount: savedDiscountAmount, charge: savedCharge } = treatmentCharge(treatment)
+  const {
+    servicePrice,
+    adjustedPrice: savedAdjustedPrice,
+    discountAmount: savedDiscountAmount,
+    charge: savedCharge,
+  } = treatmentCharge(treatment)
 
-  // While the discount form is open, the table below shows a live preview of
+  // While the pricing form is open, the table below shows a live preview of
   // what Save will produce; closed, it falls back to the last-saved figures.
-  const { discountAmount, charge } = discountFormOpen
-    ? applyDiscount(servicePrice, discountType === 'none' ? null : discountType, Number(discountValue) || null)
+  const adjustedPrice = pricingFormOpen
+    ? applyPriceAdjustment(servicePrice, adjustmentType === 'none' ? null : adjustmentType, Number(adjustmentValue) || null)
+    : savedAdjustedPrice
+  const { discountAmount, charge } = pricingFormOpen
+    ? applyDiscount(adjustedPrice, discountType === 'none' ? null : discountType, Number(discountValue) || null)
     : { discountAmount: savedDiscountAmount, charge: savedCharge }
 
-  function openDiscountForm() {
+  function openPricingForm() {
+    setAdjustmentType(treatment.priceAdjustmentType ?? 'none')
+    setAdjustmentValue(treatment.priceAdjustmentValue != null ? String(treatment.priceAdjustmentValue) : '')
     setDiscountType(treatment.discountType ?? 'none')
     setDiscountValue(treatment.discountValue != null ? String(treatment.discountValue) : '')
-    setDiscountFormOpen(true)
+    setPricingFormOpen(true)
   }
 
   return (
@@ -838,6 +915,7 @@ function TreatmentBillingCard({
         // TreatmentBillingCard only ever receives non-pending treatments (see the rows filter above)
         date={treatment.startedAt!}
         charge={savedCharge}
+        adjustmentLabel={adjustmentLabel(treatment.priceAdjustmentType, treatment.priceAdjustmentValue)}
         discountLabel={discountLabel(treatment.discountType, treatment.discountValue)}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
@@ -851,6 +929,15 @@ function TreatmentBillingCard({
                 <td className="pr-6 text-ink-soft">Service charge</td>
                 <td className="text-right font-medium text-ink">{formatINR(servicePrice)}</td>
               </tr>
+              {adjustedPrice !== servicePrice && (
+                <tr>
+                  <td className="pr-6 text-ink-soft">Price adjustment</td>
+                  <td className={`text-right font-medium ${adjustedPrice > servicePrice ? 'text-ink' : 'text-crit'}`}>
+                    {adjustedPrice > servicePrice ? '+' : '−'}
+                    {formatINR(Math.abs(adjustedPrice - servicePrice))}
+                  </td>
+                </tr>
+              )}
               {discountAmount > 0 && (
                 <tr>
                   <td className="pr-6 text-ink-soft">Discount</td>
@@ -864,22 +951,26 @@ function TreatmentBillingCard({
             </tbody>
           </table>
 
-          {discountFormOpen ? (
-            <DiscountForm
-              type={discountType}
-              value={discountValue}
-              onTypeChange={setDiscountType}
-              onValueChange={setDiscountValue}
-              onSave={async (discount) => {
-                await updateTreatmentDiscount(treatment.id, discount)
-                setDiscountFormOpen(false)
+          {pricingFormOpen ? (
+            <PricingForm
+              adjustmentType={adjustmentType}
+              adjustmentValue={adjustmentValue}
+              onAdjustmentTypeChange={setAdjustmentType}
+              onAdjustmentValueChange={setAdjustmentValue}
+              discountType={discountType}
+              discountValue={discountValue}
+              onDiscountTypeChange={setDiscountType}
+              onDiscountValueChange={setDiscountValue}
+              onSave={async (adjustment, discount) => {
+                await updateTreatmentDiscount(treatment.id, adjustment, discount)
+                setPricingFormOpen(false)
                 onChange()
               }}
-              onCancel={() => setDiscountFormOpen(false)}
+              onCancel={() => setPricingFormOpen(false)}
             />
           ) : (
-            <Button variant="secondary" onClick={openDiscountForm}>
-              {treatment.discountType ? 'Edit discount' : '+ Add discount'}
+            <Button variant="secondary" onClick={openPricingForm}>
+              {treatment.priceAdjustmentType || treatment.discountType ? 'Edit pricing' : '+ Adjust price / discount'}
             </Button>
           )}
 
@@ -895,22 +986,38 @@ function TreatmentBillingCard({
 }
 
 /** Shared by both TreatmentBillingCard and ConsultationBillingCard.
- * Controlled by the parent (type/value live there, not here) so the parent's
- * Discount/Total amount rows above can update live, on every keystroke,
- * instead of only after Save. */
-function DiscountForm({
-  type,
-  value,
-  onTypeChange,
-  onValueChange,
+ * Controlled by the parent (all type/value state lives there, not here) so
+ * the parent's Price adjustment/Discount/Total amount rows above can update
+ * live, on every keystroke, instead of only after Save.
+ *
+ * Two independent, ordered stages — see applyPriceAdjustment/applyDiscount
+ * above: the price increase (on the base price, saved first) and the
+ * discount (decrease-only, computed on the adjusted price). Either, both, or
+ * neither can be set. */
+function PricingForm({
+  adjustmentType,
+  adjustmentValue,
+  onAdjustmentTypeChange,
+  onAdjustmentValueChange,
+  discountType,
+  discountValue,
+  onDiscountTypeChange,
+  onDiscountValueChange,
   onSave,
   onCancel,
 }: {
-  type: 'none' | 'percent' | 'amount'
-  value: string
-  onTypeChange: (type: 'none' | 'percent' | 'amount') => void
-  onValueChange: (value: string) => void
-  onSave: (discount: { type: 'percent' | 'amount'; value: number } | null) => Promise<void>
+  adjustmentType: 'none' | 'percent' | 'amount'
+  adjustmentValue: string
+  onAdjustmentTypeChange: (type: 'none' | 'percent' | 'amount') => void
+  onAdjustmentValueChange: (value: string) => void
+  discountType: 'none' | 'percent' | 'amount'
+  discountValue: string
+  onDiscountTypeChange: (type: 'none' | 'percent' | 'amount') => void
+  onDiscountValueChange: (value: string) => void
+  onSave: (
+    adjustment: { type: 'percent' | 'amount'; value: number } | null,
+    discount: { type: 'percent' | 'amount'; value: number } | null,
+  ) => Promise<void>
   onCancel: () => void
 }) {
   const [submitting, setSubmitting] = useState(false)
@@ -921,54 +1028,93 @@ function DiscountForm({
     setSubmitting(true)
     setError(null)
     try {
-      if (type === 'none') {
-        await onSave(null)
-      } else {
-        const numeric = Number(value)
+      let adjustment: { type: 'percent' | 'amount'; value: number } | null = null
+      if (adjustmentType !== 'none') {
+        const numeric = Number(adjustmentValue)
+        if (!numeric || numeric <= 0) {
+          setError('Enter a price increase greater than 0.')
+          return
+        }
+        adjustment = { type: adjustmentType, value: numeric }
+      }
+
+      let discount: { type: 'percent' | 'amount'; value: number } | null = null
+      if (discountType !== 'none') {
+        const numeric = Number(discountValue)
         if (!numeric || numeric <= 0) {
           setError('Enter a discount greater than 0.')
           return
         }
-        await onSave({ type, value: numeric })
+        discount = { type: discountType, value: numeric }
       }
+
+      await onSave(adjustment, discount)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save the discount')
+      setError(err instanceof Error ? err.message : 'Failed to save the pricing')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3 rounded-lg bg-paper-raised p-3">
-      <SelectField
-        label="Discount"
-        options={['none', 'percent', 'amount']}
-        value={type}
-        onChange={(e) => {
-          onTypeChange(e.target.value as typeof type)
-          onValueChange('')
-        }}
-        className="w-32"
-      />
-      {type !== 'none' && (
-        <Field
-          label={type === 'percent' ? 'Percent off' : 'Amount off'}
-          type="number"
-          min="0"
-          max={type === 'percent' ? '100' : undefined}
-          value={value}
-          onChange={(e) => onValueChange(e.target.value)}
-          placeholder={type === 'percent' ? '10' : '500'}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg bg-paper-raised p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <SelectField
+          label="Price increase"
+          options={['none', 'percent', 'amount']}
+          value={adjustmentType}
+          onChange={(e) => {
+            onAdjustmentTypeChange(e.target.value as typeof adjustmentType)
+            onAdjustmentValueChange('')
+          }}
           className="w-32"
         />
-      )}
-      {error && <p className="w-full text-[13px] text-crit">{error}</p>}
-      <Button type="submit" disabled={submitting}>
-        {submitting ? 'Saving…' : 'Save'}
-      </Button>
-      <Button type="button" variant="ghost" onClick={onCancel}>
-        Cancel
-      </Button>
+        {adjustmentType !== 'none' && (
+          <Field
+            label={adjustmentType === 'percent' ? 'Percent' : 'Amount'}
+            type="number"
+            min="0"
+            max={adjustmentType === 'percent' ? '100' : undefined}
+            value={adjustmentValue}
+            onChange={(e) => onAdjustmentValueChange(e.target.value)}
+            placeholder={adjustmentType === 'percent' ? '10' : '500'}
+            className="w-32"
+          />
+        )}
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <SelectField
+          label="Discount"
+          options={['none', 'percent', 'amount']}
+          value={discountType}
+          onChange={(e) => {
+            onDiscountTypeChange(e.target.value as typeof discountType)
+            onDiscountValueChange('')
+          }}
+          className="w-32"
+        />
+        {discountType !== 'none' && (
+          <Field
+            label={discountType === 'percent' ? 'Percent off' : 'Amount off'}
+            type="number"
+            min="0"
+            max={discountType === 'percent' ? '100' : undefined}
+            value={discountValue}
+            onChange={(e) => onDiscountValueChange(e.target.value)}
+            placeholder={discountType === 'percent' ? '10' : '500'}
+            className="w-32"
+          />
+        )}
+      </div>
+      {error && <p className="text-[13px] text-crit">{error}</p>}
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={submitting}>
+          {submitting ? 'Saving…' : 'Save'}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </form>
   )
 }
