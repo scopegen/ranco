@@ -25,8 +25,8 @@ export function Settings() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <SettingsLink to="/admin/services" icon={Package} label="Services" description="Manage the service catalog" />
-        <SettingsLink to="/admin/doctors" icon={UserCog} label="Doctors" description="Manage doctor accounts" />
+        <SettingsLink to="/admin/services" icon={Package} label="Services" />
+        <SettingsLink to="/admin/doctors" icon={UserCog} label="Doctors" />
       </div>
 
       <button
@@ -45,12 +45,10 @@ function SettingsLink({
   to,
   icon: Icon,
   label,
-  description,
 }: {
   to: string
   icon: typeof Package
   label: string
-  description: string
 }) {
   return (
     <Link
@@ -58,10 +56,7 @@ function SettingsLink({
       className="flex items-center gap-3 rounded-lg border border-rule bg-white px-4 py-3 shadow-sm transition-colors hover:bg-paper-raised"
     >
       <Icon size={18} strokeWidth={2} className="text-ink-soft" />
-      <div className="flex flex-1 flex-col gap-0.5">
-        <span className="text-body font-medium text-ink">{label}</span>
-        <span className="text-[12px] text-ink-faint">{description}</span>
-      </div>
+      <span className="flex-1 text-body font-medium text-ink">{label}</span>
       <ChevronRight size={16} className="text-ink-faint" />
     </Link>
   )
