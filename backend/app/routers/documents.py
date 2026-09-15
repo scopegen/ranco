@@ -127,6 +127,7 @@ def download_prescription_entry_pdf(
         xray_done,
         recommended_services,
         recommendation_note,
+        doctor.signature_image if doctor else None,
     )
     return _pdf_response(
         content, f"prescription-{pdf.patient_id_str(patient.patient_number)}-{entry_id.hex[:8]}.pdf"

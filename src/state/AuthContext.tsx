@@ -10,6 +10,7 @@ interface RawStaff {
   specialty: string | null
   registration_no: string | null
   email: string
+  signature_image: string | null
 }
 
 interface LoginResponse {
@@ -25,6 +26,7 @@ function toStaff(r: RawStaff): Staff {
     specialty: r.specialty,
     registrationNo: r.registration_no,
     email: r.email,
+    signatureImage: r.signature_image,
   }
 }
 

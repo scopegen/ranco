@@ -33,6 +33,15 @@ interface ClinicContextValue {
   doctorName: (id: string | undefined) => string
   serviceName: (id: string | undefined) => string
 
+  updateDoctor: (
+    id: string,
+    input: { name: string; specialty?: string; registrationNo?: string; email: string; password?: string },
+  ) => Promise<Staff>
+  // imageData: a full data URL, from either a file upload or a drawn
+  // signature's canvas export — either way the backend treats it the same.
+  setDoctorSignature: (id: string, imageData: string) => Promise<Staff>
+  clearDoctorSignature: (id: string) => Promise<Staff>
+
   addDoctor: (input: {
     name: string
     specialty?: string
@@ -203,6 +212,33 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     })
     setDoctors((prev) => [...prev, created])
     return created
+  }
+
+  async function updateDoctor(
+    id: string,
+    input: { name: string; specialty?: string; registrationNo?: string; email: string; password?: string },
+  ) {
+    const updated = await clinicalApi.updateStaff(id, {
+      name: input.name,
+      specialty: input.specialty,
+      registration_no: input.registrationNo,
+      email: input.email,
+      password: input.password,
+    })
+    setDoctors((prev) => prev.map((d) => (d.id === id ? updated : d)))
+    return updated
+  }
+
+  async function setDoctorSignature(id: string, imageData: string) {
+    const updated = await clinicalApi.setStaffSignature(id, imageData)
+    setDoctors((prev) => prev.map((d) => (d.id === id ? updated : d)))
+    return updated
+  }
+
+  async function clearDoctorSignature(id: string) {
+    const updated = await clinicalApi.clearStaffSignature(id)
+    setDoctors((prev) => prev.map((d) => (d.id === id ? updated : d)))
+    return updated
   }
 
   async function addConsultation(
@@ -429,6 +465,9 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         doctorName,
         serviceName,
         addDoctor,
+        updateDoctor,
+        setDoctorSignature,
+        clearDoctorSignature,
         addConsultation,
         updateConsultation,
         updateConsultationDiscount,

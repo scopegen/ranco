@@ -87,6 +87,15 @@ class Staff(Base):
     registration_no: Mapped[str | None] = mapped_column(String(60))
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Base64-encoded PNG (no "data:image/png;base64," prefix — that's added
+    # back on the way out, both to the frontend and into the prescription
+    # PDF). Background is auto-stripped to transparent on upload — see
+    # app.signature.make_transparent — regardless of whether it came from an
+    # uploaded photo/scan or an on-screen drawn signature, so this is always
+    # ink-on-transparent, never ink-on-white. Null means this doctor hasn't
+    # set one yet — the prescription PDF falls back to the old plain-text
+    # disclaimer in that case.
+    signature_image: Mapped[str | None] = mapped_column(Text)
 
 
 class Patient(Base):

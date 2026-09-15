@@ -26,6 +26,31 @@ class StaffOut(BaseModel):
     specialty: str | None
     registration_no: str | None
     email: EmailStr
+    # Bare base64 PNG, no "data:image/png;base64," prefix — callers (the
+    # frontend's <img>, the prescription PDF's <img>) add that themselves.
+    # Already background-stripped-to-transparent — see app/signature.py.
+    signature_image: str | None
+
+
+class StaffUpdate(BaseModel):
+    """Admin-only. password is optional — omit it (or send null) to leave
+    the current password untouched; role is deliberately not editable
+    here, there's no UI for changing a doctor into an admin or vice versa."""
+
+    name: str
+    specialty: str | None = None
+    registration_no: str | None = None
+    email: EmailStr
+    password: str | None = None
+
+
+class SignatureUpload(BaseModel):
+    """image_data is a full data URL (e.g. "data:image/png;base64,...") —
+    either an uploaded file read client-side, or a drawn signature exported
+    straight off the canvas. The backend strips its background to
+    transparent and stores just the base64 payload; see app/signature.py."""
+
+    image_data: str
 
 
 class LoginRequest(BaseModel):

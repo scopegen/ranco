@@ -29,6 +29,7 @@ interface RawStaff {
   specialty: string | null
   registration_no: string | null
   email: string
+  signature_image: string | null
 }
 
 interface RawPatient {
@@ -217,6 +218,7 @@ const toStaff = (r: RawStaff): Staff => ({
   specialty: r.specialty,
   registrationNo: r.registration_no,
   email: r.email,
+  signatureImage: r.signature_image,
 })
 
 const toPatient = (r: RawPatient): Patient => ({
@@ -387,6 +389,18 @@ export const clinicalApi = {
     email: string
     password: string
   }) => api.post<RawStaff>('/staff', input).then(toStaff),
+  // password omitted/undefined leaves the current one untouched — see
+  // StaffUpdate's own doc comment.
+  updateStaff: (
+    id: string,
+    input: { name: string; specialty?: string; registration_no?: string; email: string; password?: string },
+  ) => api.patch<RawStaff>(`/staff/${id}`, input).then(toStaff),
+  // image_data: a full data URL ("data:image/png;base64,...") — either a
+  // read-in uploaded file or a canvas export. Backend strips the background
+  // to transparent before storing.
+  setStaffSignature: (id: string, imageData: string) =>
+    api.patch<RawStaff>(`/staff/${id}/signature`, { image_data: imageData }).then(toStaff),
+  clearStaffSignature: (id: string) => api.delete<RawStaff>(`/staff/${id}/signature`).then(toStaff),
 
   // patients
   listPatients: () => api.get<RawPatient[]>('/patients').then((rs) => rs.map(toPatient)),

@@ -137,6 +137,15 @@ table.field-table-2col .field-value {{ width: 27%; color: {INK}; }}
 .entry-head b {{ color: {INK}; }}
 .rx-title {{ font-size: 15pt; font-style: italic; font-weight: bold; color: {ACCENT}; margin: 6px 0 4px; }}
 .rx-line {{ padding: 2px 0 2px 14px; font-size: 11.5pt; }}
+/* Right-aligned — an inline <img> right-aligns under a block with
+   text-align:right the same way text does, same technique as .date-stamp
+   above. Purely additive next to the .disclaimer footer note, not a
+   replacement for it. */
+.signature-block {{ text-align: right; margin-top: 28px; }}
+.signature-block img {{ height: 46pt; max-width: 160pt; }}
+.signature-name {{ font-weight: bold; margin: 2px 0 0; font-size: 11.5pt; }}
+.signature-designation {{ color: {INK_SOFT}; margin: 0; font-size: 10pt; }}
+.signature-license {{ margin: 2px 0 0; font-size: 10pt; }}
 .section-title {{ font-size: 15pt; font-weight: bold; color: {INK}; margin: 18px 0 8px; border-bottom: 1px solid {RULE}; padding-bottom: 4px; }}
 table.rows {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
 table.rows th {{ text-align: left; font-size: 10pt; text-transform: uppercase; color: {INK_SOFT}; border-bottom: 1px solid {RULE}; padding: 4px 6px; }}
@@ -346,6 +355,31 @@ def _display_doctor_name(name: str) -> str:
     return stripped
 
 
+def _signature_block_html(
+    doctor_name: str, doctor_specialty: str | None, doctor_registration_no: str | None, signature_image: str | None
+) -> str:
+    """Right-aligned — img above name above designation above license no,
+    matching the clinic's actual printed Rx pad layout. Purely additive:
+    doesn't replace the .disclaimer footer note, a doctor with no signature
+    on file yet just doesn't get this block at all (no placeholder box)."""
+    if not signature_image:
+        return ""
+    designation_html = f'<p class="signature-designation">{_esc(doctor_specialty)}</p>' if doctor_specialty else ""
+    license_html = (
+        f'<p class="signature-license"><span class="label">License No.:</span> {_esc(doctor_registration_no)}</p>'
+        if doctor_registration_no
+        else ""
+    )
+    return f"""
+    <div class="signature-block">
+      <img src="data:image/png;base64,{signature_image}" class="signature-img" />
+      <p class="signature-name">Dr. {_esc(_display_doctor_name(doctor_name))}</p>
+      {designation_html}
+      {license_html}
+    </div>
+    """
+
+
 def _prescription_entry_html(
     entry,
     doctor_name: str,
@@ -356,6 +390,8 @@ def _prescription_entry_html(
     xray_done: bool = False,
     recommended_services: list[str] | None = None,
     recommendation_note: str | None = None,
+    doctor_registration_no: str | None = None,
+    signature_image: str | None = None,
 ) -> str:
     """page_mode: used only by the per-entry prescription PDFs (single and
     combined), where each entry is its own standalone page with its own
@@ -367,7 +403,9 @@ def _prescription_entry_html(
     recommendation_note: only set when this entry is linked to a
     consultation — consultations already capture all of these, so they're
     passed in from there rather than duplicated onto PrescriptionEntry
-    itself. recommended_services is already-resolved names, not ids."""
+    itself. recommended_services is already-resolved names, not ids.
+    doctor_registration_no/signature_image: only rendered in page_mode
+    (a compact render_history_pdf row has no room for a signature block)."""
     rx_lines = "".join(
         f'<div class="rx-line">{i + 1}. {_esc(line)}</div>'
         for i, line in enumerate(entry.notes.splitlines())
@@ -395,6 +433,7 @@ def _prescription_entry_html(
     if page_mode:
         entry_head_html = ""
         wrapper_class = "entry-page"
+        signature_html = _signature_block_html(doctor_name, doctor_specialty, doctor_registration_no, signature_image)
     else:
         doctor_line = (
             f'<b>Dr. {_esc(_display_doctor_name(doctor_name))}</b>{specialty_str}'
@@ -402,6 +441,7 @@ def _prescription_entry_html(
         )
         entry_head_html = f'<div class="entry-head">{doctor_line}</div>'
         wrapper_class = "entry"
+        signature_html = ""
 
     return f"""
     <div class="{wrapper_class}">
@@ -415,6 +455,7 @@ def _prescription_entry_html(
       {advice_html}
       {recommended_html}
       {recommendation_note_html}
+      {signature_html}
     </div>
     """
 
@@ -439,6 +480,8 @@ def render_prescription_pdf(
             staff_by_id[e.added_by].specialty if e.added_by in staff_by_id else None,
             page_mode=True,
             chief_complaint=chief_complaint_by_entry_id.get(e.id),
+            doctor_registration_no=staff_by_id[e.added_by].registration_no if e.added_by in staff_by_id else None,
+            signature_image=staff_by_id[e.added_by].signature_image if e.added_by in staff_by_id else None,
         )
         # No single per-page date/day fits in the header here (unlike
         # render_single_prescription_pdf) — the header/footer are one fixed
@@ -477,13 +520,16 @@ def render_single_prescription_pdf(
     xray_done: bool = False,
     recommended_services: list[str] | None = None,
     recommendation_note: str | None = None,
+    signature_image: str | None = None,
 ) -> bytes:
     """One prescription entry, one PDF — the per-consultation/per-visit
     "view"/"download" buttons each hit this instead of the combined,
     every-entry-ever document render_prescription_pdf produces. One doctor
     per document here, so the letterhead shows that actual doctor (name,
     specialty, registration no.) instead of the static clinic default —
-    which also means the doctor's name doesn't need repeating in the body."""
+    which also means the doctor's name doesn't need repeating in the body.
+    signature_image: that doctor's own signature (bare base64 PNG), if
+    they've set one — see _signature_block_html."""
     entry_html = _prescription_entry_html(
         entry,
         doctor_name,
@@ -494,6 +540,8 @@ def render_single_prescription_pdf(
         xray_done=xray_done,
         recommended_services=recommended_services,
         recommendation_note=recommendation_note,
+        doctor_registration_no=doctor_reg_no,
+        signature_image=signature_image,
     )
     # Right-aligned, smaller/tighter than the shared field-table style —
     # see the .date-stamp CSS comment for why this is plain text, not a

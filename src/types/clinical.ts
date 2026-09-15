@@ -31,6 +31,10 @@ export interface Staff {
   // Shown on the prescription PDF letterhead alongside name/specialty.
   registrationNo: string | null
   email: string
+  // Bare base64 PNG (no "data:" prefix — callers add that), background
+  // already stripped to transparent. Null means this doctor hasn't set one
+  // yet, in which case the prescription PDF just omits the signature block.
+  signatureImage: string | null
 }
 
 export interface Service {
