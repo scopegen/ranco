@@ -1,4 +1,6 @@
 import { useMemo, useState, type SubmitEvent } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../state/AuthContext'
 import { useClinic } from '../../state/ClinicContext'
 import { formatINR } from '../../lib/currency'
@@ -11,7 +13,7 @@ const UNCATEGORIZED = 'General'
 
 export function Services() {
   const { staff } = useAuth()
-  const { services, loading, addService, updateService } = useClinic()
+  const { services, addService, updateService } = useClinic()
   const isAdmin = staff?.role === 'admin'
   const [formOpen, setFormOpen] = useState(false)
 
@@ -38,8 +40,17 @@ export function Services() {
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-10">
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1>Services</h1>
-          <p className="text-ink-soft">{loading ? 'Loading…' : `${services.length} in the catalog`}</p>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/admin/settings"
+              aria-label="Back to settings"
+              title="Back"
+              className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
+            >
+              <ArrowLeft size={16} />
+            </Link>
+            <h1>Services</h1>
+          </div>
         </div>
         {isAdmin && (
           <Button variant={formOpen ? 'ghost' : 'primary'} onClick={() => setFormOpen((v) => !v)}>

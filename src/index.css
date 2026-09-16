@@ -66,6 +66,18 @@
   --color-warn-soft: #faf0d9;
 }
 
+/* Patient-detail section overlay (see PatientDetail.tsx) — a real slide-in,
+   not just a transition, since it needs to play the moment the sheet
+   mounts (a route match), not on some later state flip. */
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 /* ---- base ---- */
 @layer base {
   html,

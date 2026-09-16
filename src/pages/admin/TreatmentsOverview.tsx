@@ -48,7 +48,7 @@ export function TreatmentsOverview() {
   const loading = patientsLoading || rows === null
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-1">
         <h1>Treatments</h1>
         <p className="text-ink-soft">{loading ? 'Loading…' : `${rows!.length} ${scopeLabel}`}</p>
@@ -58,13 +58,13 @@ export function TreatmentsOverview() {
 
       {!loading && rows!.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-rule bg-white shadow-sm">
-          <table className="w-full min-w-[640px] text-left">
+          <table className="w-full text-left sm:min-w-[640px]">
             <thead>
               <tr className="border-b border-rule">
                 <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Patient</th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Service</th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Doctor</th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Started</th>
+                <th className="hidden px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:table-cell">Service</th>
+                <th className="hidden px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:table-cell">Doctor</th>
+                <th className="hidden px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:table-cell">Started</th>
                 <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Status</th>
               </tr>
             </thead>
@@ -76,9 +76,9 @@ export function TreatmentsOverview() {
                       {patient.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-ink-soft">{serviceName(treatment.serviceId)}</td>
-                  <td className="px-4 py-3 text-ink-soft">{doctorName(treatment.doctorId)}</td>
-                  <td className="px-4 py-3 text-ink-soft">
+                  <td className="hidden px-4 py-3 text-ink-soft sm:table-cell">{serviceName(treatment.serviceId)}</td>
+                  <td className="hidden px-4 py-3 text-ink-soft sm:table-cell">{doctorName(treatment.doctorId)}</td>
+                  <td className="hidden px-4 py-3 text-ink-soft sm:table-cell">
                     {treatment.startedAt ? formatDate(treatment.startedAt) : '—'}
                   </td>
                   <td className="px-4 py-3">

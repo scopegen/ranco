@@ -10,7 +10,6 @@ import { Dashboard } from './pages/admin/Dashboard'
 import { PatientList } from './pages/admin/PatientList'
 import { NewPatient } from './pages/admin/NewPatient'
 import { PatientDetail } from './pages/admin/PatientDetail'
-import { PatientOverview } from './pages/admin/patient-detail/PatientOverview'
 import { TimelineSection, ConsultationsSection, TreatmentsSection, NextCallSection, BillingSection } from './pages/admin/patient-detail/SectionPages'
 import { Services } from './pages/admin/Services'
 import { Doctors } from './pages/admin/Doctors'
@@ -40,8 +39,11 @@ function App() {
           <Route path="patients" element={<PatientList />} />
           <Route path="patients/new" element={<NewPatient />} />
           <Route path="patients/:code/edit" element={<NewPatient />} />
+          {/* No index route here anymore — PatientDetail renders the hero/
+              info/section-cards content itself, for every one of these
+              paths; the five below just decide which section's content
+              shows as a sheet on top of it (see PatientDetail.tsx). */}
           <Route path="patients/:code" element={<PatientDetail />}>
-            <Route index element={<PatientOverview />} />
             <Route path="timeline" element={<TimelineSection />} />
             <Route path="consultations" element={<ConsultationsSection />} />
             <Route path="treatments" element={<TreatmentsSection />} />

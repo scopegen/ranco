@@ -66,7 +66,7 @@ export function NextCallTab({
           <Field label="Time" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
         </div>
         {error && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{error}</p>}
-        <div>
+        <div className="flex justify-end">
           <Button type="submit" disabled={submitting}>
             {submitting ? 'Scheduling…' : '+ Schedule next call'}
           </Button>

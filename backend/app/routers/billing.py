@@ -70,7 +70,9 @@ def get_billing_summary(patient_id: uuid.UUID, db: Session = Depends(get_db), _a
     return PatientBillingSummary(
         total_billed=total_billed,
         total_paid=total_paid,
-        total_outstanding=max(0.0, total_billed - total_paid),
+        # Not clamped to 0 — collected more than billed (a refundable credit)
+        # should show as a negative outstanding, not silently disappear to 0.
+        total_outstanding=total_billed - total_paid,
     )
 
 

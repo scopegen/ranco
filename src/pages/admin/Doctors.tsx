@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent, type SubmitEvent } from 'react'
-import { Pencil } from 'lucide-react'
+import { ArrowLeft, Pencil } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../state/AuthContext'
 import { useClinic } from '../../state/ClinicContext'
 import { Button } from '../../components/Button'
@@ -20,8 +21,17 @@ export function Doctors() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1>Doctors</h1>
-          <p className="text-ink-soft">{loading ? 'Loading…' : `${doctors.length} on staff`}</p>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/admin/settings"
+              aria-label="Back to settings"
+              title="Back"
+              className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
+            >
+              <ArrowLeft size={16} />
+            </Link>
+            <h1>Doctors</h1>
+          </div>
         </div>
         {isAdmin && (
           <Button
@@ -70,11 +80,9 @@ export function Doctors() {
             <div key={doctor.id} className="flex flex-col gap-3 rounded-lg border border-rule bg-white px-4 py-3 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex flex-col gap-0.5">
+                  {/* Specialty/email/registration no. shown only in the edit
+                      form now, not here — click Edit to see or change them. */}
                   <span className="text-body font-medium text-ink">{doctor.name}</span>
-                  <span className="text-[12px] text-ink-faint">
-                    {doctor.specialty ?? 'General Dentistry'} · {doctor.email}
-                    {doctor.registrationNo && ` · Reg. No. ${doctor.registrationNo}`}
-                  </span>
                 </div>
                 {isAdmin && (
                   <button
@@ -246,19 +254,19 @@ function DoctorSignatureSection({ doctor }: { doctor: Staff }) {
       {drawing ? (
         <SignaturePad onSave={save} onCancel={() => setDrawing(false)} />
       ) : (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
           <input ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleFileChange} />
+          {doctor.signatureImage && (
+            <Button type="button" variant="ghost" onClick={handleRemove} disabled={submitting}>
+              Remove
+            </Button>
+          )}
           <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={submitting}>
             {submitting ? 'Saving…' : doctor.signatureImage ? 'Upload a new one' : 'Upload signature'}
           </Button>
           <Button type="button" variant="secondary" onClick={() => setDrawing(true)} disabled={submitting}>
             Draw signature
           </Button>
-          {doctor.signatureImage && (
-            <Button type="button" variant="ghost" onClick={handleRemove} disabled={submitting}>
-              Remove
-            </Button>
-          )}
         </div>
       )}
 

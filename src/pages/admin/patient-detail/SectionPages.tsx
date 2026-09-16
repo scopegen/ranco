@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { Link, useLocation, useOutletContext } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { useLocation, useNavigate, useOutletContext } from 'react-router-dom'
+import { X } from 'lucide-react'
 import type { PatientDetailContext } from '../PatientDetail'
 import { TimelineTab } from './TimelineTab'
 import { ConsultationsTab } from './ConsultationsTab'
@@ -9,27 +9,24 @@ import { NextCallTab } from './NextCallTab'
 import { BillingTab, BillingHistoryModal } from './BillingTab'
 import { Button } from '../../../components/Button'
 
-/** Shared page chrome for every section route: a back arrow to the overview
- * (the card list) plus a title, so each section reads like its own page.
- * `headerExtra` renders on the same row, right of the title — used by the
- * Billing section for its "Billing history" trigger. */
-function SectionShell({ title, headerExtra, children }: { title: string; headerExtra?: ReactNode; children: ReactNode }) {
+/** Shared chrome for every section's content inside the bottom-sheet overlay
+ * (see PatientDetail.tsx) — a title plus a close (X) on the right, since
+ * this is a sheet over the patient page now, not a page of its own. */
+function SectionShell({ title, children }: { title: string; children: ReactNode }) {
+  const navigate = useNavigate()
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3 border-b border-rule pb-4">
-        <div className="flex items-center gap-2">
-          <Link
-            to=".."
-            relative="path"
-            aria-label="Back to sections"
-            title="Back"
-            className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
-          >
-            <ArrowLeft size={16} />
-          </Link>
-          <h2 className="text-subheading font-medium text-ink">{title}</h2>
-        </div>
-        {headerExtra}
+        <h2 className="text-subheading font-medium text-ink">{title}</h2>
+        <button
+          type="button"
+          onClick={() => navigate('..', { relative: 'path' })}
+          aria-label="Close"
+          title="Close"
+          className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
+        >
+          <X size={16} />
+        </button>
       </div>
       {children}
     </div>
@@ -92,20 +89,18 @@ export function BillingSection() {
   const [historyOpen, setHistoryOpen] = useState(false)
   if (!isAdmin) return null
   return (
-    <SectionShell
-      title="Billing"
-      headerExtra={
-        <Button variant="secondary" onClick={() => setHistoryOpen(true)}>
-          Billing history
-        </Button>
-      }
-    >
+    <SectionShell title="Billing">
       <BillingTab
         patient={patient}
         data={data}
         onChange={refresh}
         openPaymentSignal={openPayment ? location.key : null}
       />
+      <div className="flex justify-end">
+        <Button variant="secondary" onClick={() => setHistoryOpen(true)}>
+          Billing history
+        </Button>
+      </div>
       {historyOpen && <BillingHistoryModal patientId={patient.id} onClose={() => setHistoryOpen(false)} />}
     </SectionShell>
   )

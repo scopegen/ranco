@@ -1123,7 +1123,11 @@ function SummaryTile({ label, value, accent = false }: { label: string; value: s
   return (
     <div className="rounded-xl border border-rule bg-white p-4 shadow-sm">
       <p className="text-[9px] font-medium uppercase tracking-wider text-ink-faint">{label}</p>
-      <p className={`mt-1 text-heading font-bold ${accent ? 'text-accent-deep' : 'text-ink'}`}>{value}</p>
+      {/* Was a flat text-heading (24px), too wide for this tile at ₹ amounts
+          with several digits — smaller on mobile only (14px), back up to
+          the full 24px from sm and up where there's room. Never truncated —
+          the whole amount has to stay readable, not clipped. */}
+      <p className={`mt-1 text-body font-bold sm:text-heading ${accent ? 'text-accent-deep' : 'text-ink'}`}>{value}</p>
     </div>
   )
 }
