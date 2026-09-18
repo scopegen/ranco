@@ -241,23 +241,20 @@ export function NewPatient() {
     // Same gradient + wave language as the patient-detail hero card, spread
     // across the whole page instead of one card — no bordered "form panel"
     // anymore, fields sit directly on this background.
-    <div className="relative">
-      {/* Fixed to the viewport, not part of the scrolling content — stays
-          put at the bottom of the screen while only the form (below)
-          scrolls over it, instead of scrolling away with the page. No
-          z-index here (was -z-10, which sank it below the sidebar's own
-          opaque background, hiding it entirely) — plain DOM order already
-          puts it under the content, which is separately given z-10.
-          md:left-60 keeps it out of the sidebar's own column (w-60) — full
-          inset-0 painted over the sidebar too (same stacking level, later in
-          DOM order than <aside>, so it covered it) since position:fixed
-          isn't scoped to this page's own layout column.
-          [transform:translateZ(0)] + will-change-transform force this onto
-          its own GPU compositor layer — without it, some mobile browsers
-          repaint this whole fixed gradient+waves background on every scroll
-          frame instead of just compositing it, which read as scroll lag and
-          the background visibly drifting instead of staying put. */}
-      <div className="fixed inset-0 overflow-hidden bg-gradient-to-br from-[#EAF5FE] to-[#C7E5FA] [transform:translateZ(0)] will-change-transform md:left-60">
+    //
+    // The background used to be `position: fixed`, GPU-layer hints and all
+    // — still lagged/drifted on mobile scroll (position:fixed is notoriously
+    // unreliable on mobile browsers, especially combined with the address
+    // bar collapsing on scroll). Switched to a CSS Grid stack instead: both
+    // this div and the content div below occupy the same grid cell
+    // (col/row-start-1), so the grid's own height is set by the content
+    // (tall), while the background is `sticky top-0 h-svh` — it sticks to
+    // the viewport top and stays there for the full height of that shared
+    // cell, i.e. the whole page. No `fixed` anywhere, and no `md:left-60`
+    // hack either — being a normal grid item inside <main>, it's already
+    // positioned in this page's own column, not under the sidebar.
+    <div className="grid">
+      <div className="sticky top-0 col-start-1 row-start-1 h-svh overflow-hidden bg-gradient-to-br from-[#EAF5FE] to-[#C7E5FA]">
         <svg
           className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-[#BEE1F9]/70 sm:h-56"
           viewBox="0 0 800 120"
@@ -276,6 +273,11 @@ export function NewPatient() {
         </svg>
       </div>
 
+      {/* Everything else — header, form, the fixed-on-desktop action bar —
+          shares the same grid cell as the background above (col/row-start-1
+          on the wrapper right below), so it's what actually sets the grid's
+          (and the page's) real height. */}
+      <div className="relative z-10 col-start-1 row-start-1">
       {/* Desktop: arrow floats in the corner */}
       <Link
         to={isEditing && code ? `/admin/patients/${code}` : '/admin/patients'}
@@ -582,6 +584,7 @@ export function NewPatient() {
             {submitting ? (isEditing ? 'Saving…' : 'Adding…') : isEditing ? 'Save changes' : 'Add patient'}
           </Button>
         </div>
+      </div>
       </div>
     </div>
   )

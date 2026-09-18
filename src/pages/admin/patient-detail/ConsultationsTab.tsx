@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react'
-import { ChevronDown, Download, Eye, Plus, X } from 'lucide-react'
+import { ChevronDown, Download, Eye, FileText, Plus, X } from 'lucide-react'
 import type { Patient } from '../../../state/PatientsContext'
 import { useClinic, today } from '../../../state/ClinicContext'
 import { formatINR } from '../../../lib/currency'
@@ -353,25 +353,11 @@ export function PrescriptionBadge({ prescription }: { prescription: Prescription
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-start gap-1">
       <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-accent">
-        <span
-          className="flex items-center justify-center bg-accent-tint px-2 text-accent-deep"
-          aria-hidden="true"
-          title="Prescription"
-        >
-          Prescription
-          {/* <Pill size={14} /> */}
+        <span className="flex items-center justify-center bg-accent-tint px-2 text-accent-deep" aria-hidden="true" title="Prescription">
+          <FileText size={14} />
         </span>
-        <button
-          type="button"
-          onClick={handleView}
-          disabled={viewing}
-          aria-label="View prescription"
-          className="border-l border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint disabled:opacity-50"
-        >
-          {viewing ? '…' : 'View'}
-        </button>
         <button
           type="button"
           onClick={handleDownload}
@@ -380,6 +366,15 @@ export function PrescriptionBadge({ prescription }: { prescription: Prescription
           className="border-l border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint disabled:opacity-50"
         >
           {downloading ? '…' : 'Download'}
+        </button>
+        <button
+          type="button"
+          onClick={handleView}
+          disabled={viewing}
+          aria-label="View prescription"
+          className="border-l border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors hover:bg-accent-tint disabled:opacity-50"
+        >
+          {viewing ? '…' : 'View'}
         </button>
       </div>
       {error && <span className="text-[11px] text-crit">{error}</span>}
@@ -603,31 +598,27 @@ function ConsultationCard({
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-rule bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col gap-0.5">
-          <p className="text-subheading font-medium text-ink">{doctorName(consultation.doctorId)}</p>
-          <p className="text-[12px] text-ink-faint">{formatDate(consultation.consultDate)}</p>
-        </div>
+        {/* Right on the card itself, not hidden behind "View" — the
+            prescription is written as part of the form below (diagnosis/rx/
+            advice/next visit), no separate "add prescription" step, and
+            nothing shows here until it has at least one medicine. */}
+        <div>{prescription && <PrescriptionBadge prescription={prescription} />}</div>
         <button
           type="button"
           onClick={() => setEditOpen((v) => !v)}
-          aria-label={editOpen ? 'Hide consultation details' : 'View consultation details'}
+          aria-label={editOpen ? 'Hide consultation details' : 'Edit consultation'}
           className={`shrink-0 rounded-md border border-accent px-2.5 py-1 text-[12px] font-medium text-accent-deep transition-colors ${
             editOpen ? 'bg-accent-tint' : 'hover:bg-accent-tint'
           }`}
         >
-          View/Hide
+          Edit
         </button>
       </div>
 
-      {/* Right on the card itself, not hidden behind "View" — the
-          prescription is written as part of the form below (diagnosis/rx/
-          advice/next visit), no separate "add prescription" step, and
-          nothing shows here until it has at least one medicine. */}
-      {prescription && (
-        <div className="flex justify-end">
-          <PrescriptionBadge prescription={prescription} />
-        </div>
-      )}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-subheading font-medium text-ink">{doctorName(consultation.doctorId)}</p>
+        <p className="text-[12px] text-ink-faint">{formatDate(consultation.consultDate)}</p>
+      </div>
 
       {editOpen && (
         <>
