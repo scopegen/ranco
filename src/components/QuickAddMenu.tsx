@@ -55,12 +55,13 @@ export function QuickAddMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  // The add-patient form has its own "Add Patient" submit button right
-  // there — this menu's quick actions (Add consultation/payment, and its
-  // own "Add patient" link) are redundant on this exact page, and its
-  // reserved pop-up space sits right over the bottom of that form. Simplest
-  // fix: don't render it here at all rather than repositioning around it.
-  if (pathname === '/admin/patients/new') return null
+  // The add/edit-patient form has its own submit button right there — this
+  // menu's quick actions (Add consultation/payment, and its own "Add
+  // patient" link) are redundant on both of those pages, and its reserved
+  // pop-up space sits right over the bottom of that form (edit's own fixed
+  // action bar, in particular). Simplest fix: don't render it here at all
+  // rather than repositioning around it.
+  if (pathname === '/admin/patients/new' || /^\/admin\/patients\/[^/]+\/edit$/.test(pathname)) return null
 
   function goToSection(patient: Patient, section: Section) {
     const code = formatPatientId(patient.patientNumber)

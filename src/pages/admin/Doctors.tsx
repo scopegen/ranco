@@ -99,7 +99,6 @@ export function Doctors() {
                   </button>
                 )}
               </div>
-              {isAdmin && <DoctorSignatureSection doctor={doctor} />}
             </div>
           ),
         )}
@@ -177,6 +176,11 @@ function DoctorForm({
           placeholder={isEdit ? 'Leave blank to keep the current password' : 'Set a login password'}
         />
       </div>
+      {/* Signature only makes sense once the doctor already exists (a new
+          one doesn't have an id yet to attach it to) — shown here, inside
+          the edit form, not on the add-doctor form. */}
+      {isEdit && initial && <DoctorSignatureSection doctor={initial} />}
+
       {error && <p className="rounded-lg bg-crit-soft px-3.5 py-2.5 text-body text-crit">{error}</p>}
       <div className="flex gap-3">
         <Button type="submit" disabled={submitting}>

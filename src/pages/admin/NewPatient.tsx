@@ -251,8 +251,13 @@ export function NewPatient() {
           md:left-60 keeps it out of the sidebar's own column (w-60) — full
           inset-0 painted over the sidebar too (same stacking level, later in
           DOM order than <aside>, so it covered it) since position:fixed
-          isn't scoped to this page's own layout column. */}
-      <div className="fixed inset-0 overflow-hidden bg-gradient-to-br from-[#EAF5FE] to-[#C7E5FA] md:left-60">
+          isn't scoped to this page's own layout column.
+          [transform:translateZ(0)] + will-change-transform force this onto
+          its own GPU compositor layer — without it, some mobile browsers
+          repaint this whole fixed gradient+waves background on every scroll
+          frame instead of just compositing it, which read as scroll lag and
+          the background visibly drifting instead of staying put. */}
+      <div className="fixed inset-0 overflow-hidden bg-gradient-to-br from-[#EAF5FE] to-[#C7E5FA] [transform:translateZ(0)] will-change-transform md:left-60">
         <svg
           className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-[#BEE1F9]/70 sm:h-56"
           viewBox="0 0 800 120"

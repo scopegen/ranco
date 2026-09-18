@@ -74,7 +74,6 @@ export function NextCallTab({
       </form>
 
       <div className="flex flex-col gap-2">
-        {sorted.length === 0 && <p className="text-ink-soft">No next-call dates scheduled yet.</p>}
         {sorted.map((nc) => (
           <div
             key={nc.id}

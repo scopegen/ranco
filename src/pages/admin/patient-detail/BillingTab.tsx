@@ -330,20 +330,22 @@ export function BillingHistoryModal({ patientId, onClose }: { patientId: string;
   }, [patientId, getBillingHistory])
 
   return (
-    <div className="fixed inset-0 z-30 flex items-start justify-center bg-ink/40 px-4 pt-20 sm:pt-28" onClick={onClose}>
+    <div className="fixed inset-0 z-30">
+      <div className="fixed inset-0 bg-ink/40" onClick={onClose} aria-hidden="true" />
       <div
-        className="flex max-h-[70vh] w-full max-w-lg flex-col gap-4 rounded-xl border border-rule bg-white p-5 shadow-lg"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-h-[85vh] w-full max-w-lg flex-col gap-4 rounded-t-2xl bg-paper p-6 shadow-[0_-8px_30px_-8px_rgba(16,24,38,0.35)] [animation:sheet-slide-up_0.22s_ease-out]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 border-b border-rule pb-4">
           <h2 className="text-subheading font-medium text-ink">Billing history</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex items-center justify-center rounded-full p-1.5 text-ink-soft transition-colors hover:bg-paper-raised hover:text-ink"
+            title="Close"
+            className="flex items-center justify-center rounded-full border border-rule bg-white p-1.5 text-ink-soft transition-colors hover:text-accent-deep"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
