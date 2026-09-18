@@ -643,13 +643,9 @@ function ConsultationCard({
             onCancel={() => setEditOpen(false)}
           />
 
-          {treatment ? (
+          {treatment && (
             <p className="border-t border-rule pt-3 text-[13px] text-ink-soft">
               Treatment started — see <span className="font-medium text-ink">Treatments</span> tab.
-            </p>
-          ) : (
-            <p className="border-t border-rule pt-3 text-[13px] text-ink-soft">
-              No treatment started yet — start one from the <span className="font-medium text-ink">Treatments</span> tab.
             </p>
           )}
         </>
