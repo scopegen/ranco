@@ -8,6 +8,7 @@ import { clinicalApi } from '../../lib/clinicalApi'
 import { calculateAge } from '../../lib/age'
 import { findPatientByCode, formatPatientId } from '../../lib/patientId'
 import { formatDate } from '../../lib/date'
+import { formatINR } from '../../lib/currency'
 import { Pill } from '../../components/Pill'
 import { Button } from '../../components/Button'
 import type { Consultation, Invoice, NextCall, PatientBillingSummary, PrescriptionEntry, Treatment, Visit } from '../../types/clinical'
@@ -285,6 +286,21 @@ export function PatientDetail() {
                       : id === 'billing'
                         ? data.invoices.length
                         : data.consultations.length + data.treatments.length // timeline
+              // Next Call's subtitle shows the soonest upcoming call's date
+              // instead of the generic "Schedule or view" once one exists —
+              // saves a tap to see it. Billing's shows outstanding/collected
+              // instead of "Invoices & payments", same reasoning.
+              const subtitle =
+                id === 'next-call'
+                  ? (() => {
+                      const upcoming = data.nextCalls
+                        .filter((nc) => nc.status === 'upcoming')
+                        .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0]
+                      return upcoming ? formatDate(upcoming.scheduledAt) : meta.subtitle
+                    })()
+                  : id === 'billing' && data.billingSummary
+                    ? `Outstanding ${formatINR(data.billingSummary.totalOutstanding)} · Collected ${formatINR(data.billingSummary.totalPaid)}`
+                    : meta.subtitle
               return (
                 <Link
                   key={id}
@@ -312,7 +328,7 @@ export function PatientDetail() {
                   </span>
                   <div className="flex flex-col gap-0.5 pr-6">
                     <span className="text-body font-medium text-ink sm:text-subheading">{meta.label}</span>
-                    <span className="text-[13px] text-ink-soft">{meta.subtitle}</span>
+                    <span className="text-[13px] text-ink-soft">{subtitle}</span>
                   </div>
                 </Link>
               )
